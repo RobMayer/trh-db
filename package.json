@@ -1,0 +1,20 @@
+{
+    "name": "trh-db",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "packageManager": "pnpm@10.17.0",
+    "devDependencies": {
+        "@types/node": "^25.3.3",
+        "eslint": "^9.39.2",
+        "tsup": "^8.5.1",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.52.0"
+    }
+}
