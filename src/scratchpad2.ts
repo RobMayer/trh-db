@@ -63,12 +63,12 @@
                 [$("age"), ">", 12],
                 [$("roles"), "=|", ["admin", "superadmin"]]
             )).get()
-        Tuple form [sublens, operator, value] for predicates within combinators (to be validated).
 
     D11 — Sublens on both sides of comparators
         The right-hand side of .where() can be a value OR another sublens, enabling
         intra-item comparisons:
-            .where($ => $("age"), "=", $ => $("roles").size())
+            .where($ => [$("age"), "=", $("logins")])
+        $ is in scope for the entire tuple expression, so sublens-on-RHS is natural.
 
     D12 — Shared infrastructure across DB shapes
         Sublens, .where(), .sort(), .distinct(), .paginate(), .first(), .last(), .get(),
@@ -80,63 +80,89 @@
 
     D13 — Operator system carried forward from typeScratchpad.ts
         The full operator set ("=", "!=", ">", "<", ">=", "<=", "><", "%", "?", "=|", etc.)
-        and their semantics (including range tuples for "><") carry forward unchanged.
+        and their semantics carry forward unchanged. Numerify ops (#=, #>, etc.) omitted —
+        sublens .size() + standard ordering covers that.
+
+    D14 — Unified tuple .where() syntax
+        .where() always takes a single callback returning a tuple (or PredicateResult for combinators).
+        Three forms:
+            .where($ => [$("age"), ">", 12])            — 3-member standard
+            .where($ => [$("age"), "><", 18, 65])        — 4-member range
+            .where($ => $.or([...], [...]))              — combinator
+        This replaced the earlier three-arg form and solved RHS callback inference issues.
+
+    D15 — Range ops use 4-member tuples exclusively
+        RangeOp ("><", "!><", ">=<", "!>=<") is excluded from OpFor<T> and only appears in
+        4-member predicates: [sublens, rangeOp, lo, hi]. This avoids nested tuple inference
+        issues that occurred with [sublens, "><", [lo, hi]].
+
+    D16 — Typeof RHS is open-ended string
+        The typeof operators (":", "!:", ":|", "!:|") use string / string[] as RHS, not a
+        closed union. Users can register custom type descriptors, so the type system should
+        not restrict to built-in type names.
+
+    D17 — SubLens conditional callable
+        SubLensResult<T> splits into SubLensResultBase<T> (phantom + utilities like .size())
+        and SubLensResultCallable<T> (deep property access via call signature). The callable
+        part is only included for object types — primitives like number/string don't get a
+        call signature, preventing keyof pollution (e.g., "toFixed" showing up as a valid key).
 
     Open questions:
-    - Tuple predicate typing: can generics + mapped variadic tuples make [sublens, op, value] type-safe?
     - Mutation method specifics: what .update(), .move(), etc. look like as terminals
 
-    
 
 */
 
-import { ListOr, TreeId, TreeItemOf, Updater } from "./types";
+import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "./types";
 
 class TreeDBNew<D> {
-    // without chain building
+    // --- Direct methods (bypass pipeline) ---
     get: {
-        (target: ListOr<TreeId>): Promise<unknown>;
-    } = async () => {};
+        (target: TreeId): Promise<Item<D> | undefined>;
+        (target: ListOf<TreeId>): Promise<Item<D>[]>;
+    } = async () => undefined as any;
     pluck: {
-        (target: ListOr<TreeId>): Promise<unknown>;
-    } = async () => {};
+        (target: TreeId): Promise<Item<D> | undefined>;
+        (target: ListOf<TreeId>): Promise<Item<D>[]>;
+    } = async () => undefined as any;
     move: {
-        (target: ListOr<TreeId>, newParent: Updater<string | null, TreeItemOf<D>>): Promise<unknown>;
-        (payload: { [id: TreeId]: Updater<string | null, TreeItemOf<D>> }): Promise<unknown>;
-    } = async () => {};
-    // etc....
+        (target: TreeId, newParent: Updater<string | null, TreeItemOf<D>>): Promise<Item<D> | undefined>;
+        (target: ListOf<TreeId>, newParent: Updater<string | null, TreeItemOf<D>>): Promise<Item<D>[]>;
+        (payload: { [id: TreeId]: Updater<string | null, TreeItemOf<D>> }): Promise<Item<D>[]>;
+    } = async () => undefined as any;
 
-    // chain quickstart
-    ancestors: {
-        (target: ListOr<TreeId>): unknown; // chain...
-    } = () => {};
-
+    // --- Chain starters → pipeline ---
+    where: WhereClause<D, "multi"> = (() => {}) as any;
     select: {
-        (target: ListOr<TreeId>): unknown; // chain...
-    } = () => {};
-
-    parent: {
-        (target: ListOr<TreeId>): unknown; // chain...
-    } = () => {};
-
+        (target: TreeId): TreePipeline<D, "single">;
+        (target: ListOf<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
+    ancestors: {
+        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
     children: {
-        (target: ListOr<TreeId>): unknown; // chain...
-    } = () => {};
-
-    where: {
-        (nowTheFunBegins: unknown): unknown; //chain
-    } = () => {};
-}
-
-interface SelectorTerminator {
-    get: () => Promise<unknown>;
-    move: (newParent: string | null | ((item: unknown) => string | null)) => Promise<unknown>;
-    pluck: () => Promise<unknown>;
-    //...etc
+        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
+    parent: {
+        (target: TreeId): TreePipeline<D, "single">;
+        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
+    roots: {
+        (): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
+    deep: {
+        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
+    wide: {
+        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
+    siblings: {
+        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
+    } = () => ({}) as any;
 }
 
 // ============================================================
-// Tuple Predicate Typing Experiment
+// Predicate & Operator Type System
 // ============================================================
 
 // Test data shape
@@ -192,34 +218,96 @@ type SubLensBuilder<D> = {
 
 // --- Operators grouped by the type they apply to ---
 
-type EqualityOp = "=" | "!=";
-type OrderingOp = ">" | "<" | ">=" | "<=";
-type RangeOp = "><";
-type StringOp = "%" | "%|";
-type ArrayContainsOp = "?";
-type ArrayIncludesOp = "=|" | "!|";
+// --- Operator catalog ---
+// Migrated from typeScratchpad.ts. Numerify ops (#=, #>, etc.) omitted —
+// use sublens .size() + standard ordering instead.
 
-// Map from value type T to valid operators (3-member predicates only)
-// RangeOp excluded — range ops always use 4-member predicates.
-type OpFor<T> = EqualityOp | (T extends number ? OrderingOp : never) | (T extends string ? OrderingOp | StringOp : never) | (T extends any[] ? ArrayContainsOp | ArrayIncludesOp : never);
+// Equality: any type
+type EqualityOp = "=" | "!=" | "==" | "!==";
 
-// Map from operator to valid RHS type (for 3-member predicates)
-// Range ops use 4-member predicates instead, so excluded here.
-type RhsFor<T, Op> = Op extends ArrayContainsOp ? (T extends (infer E)[] ? E | SubLensResult<E> : never) : T | SubLensResult<T>;
+// Ordering: number or string
+type OrderingOp = ">" | "!>" | ">=" | "!>=" | "<" | "!<" | "<=" | "!<=";
+
+// Any-of equality: value matches any/none in array
+type EqualityAnyOfOp = "=|" | "!=|";
+
+// Ordering any-of: value matches any/none in array
+type OrderingAnyOfOp = ">|" | "!>|" | ">=|" | "!>=|" | "<|" | "!<|" | "<=|" | "!<=|";
+
+// Range: 4-member predicates only
+type RangeOp = "><" | "!><" | ">=<" | "!>=<";
+
+// String: contains, starts/ends with, case sensitive/insensitive
+type StringContainsOp = "%" | "!%" | "%^" | "!%^";
+type StringStartsWithOp = "%_" | "!%_" | "%^_" | "!%^_";
+type StringEndsWithOp = "_%" | "!_%" | "_%^" | "!_%^";
+type StringAnyOfOp = "%|" | "!%|" | "%^|" | "!%^|" | "%_|" | "!%_|" | "_%|" | "!_%|";
+type StringAllOfOp = "%&" | "!%&" | "%^&" | "!%^&";
+type StringOp = StringContainsOp | StringStartsWithOp | StringEndsWithOp;
+
+// Regex: match against RegExp
+type RegexOp = "~" | "!~";
+type RegexAnyOfOp = "~|" | "!~|";
+type RegexAllOfOp = "~&" | "!~&";
+
+// Array contains: array has element(s)
+type ArrayContainsOp = "?" | "!?";
+type ArrayContainsAnyOfOp = "?|" | "!?|";
+type ArrayContainsAllOfOp = "?&" | "!?&";
+
+// Typeof: runtime type check (RHS is string, not a closed union — users can register custom type descriptors)
+type TypeofOp = ":" | "!:";
+type TypeofAnyOfOp = ":|" | "!:|";
+
+// --- Operator → type mapping ---
+
+// Ops valid for 3-member predicates (RangeOp excluded — always 4-member)
+type OpFor<T> =
+    | EqualityOp
+    | EqualityAnyOfOp
+    | TypeofOp
+    | TypeofAnyOfOp
+    | (T extends number ? OrderingOp | OrderingAnyOfOp : never)
+    | (T extends string ? OrderingOp | OrderingAnyOfOp | StringOp | StringAnyOfOp | StringAllOfOp | RegexOp | RegexAnyOfOp | RegexAllOfOp : never)
+    | (T extends any[] ? ArrayContainsOp | ArrayContainsAnyOfOp | ArrayContainsAllOfOp : never);
+
+// Ops that take an array of values as RHS (any-of / all-of)
+type AnyOfOp = EqualityAnyOfOp | OrderingAnyOfOp | StringAnyOfOp | StringAllOfOp | RegexAnyOfOp | RegexAllOfOp | ArrayContainsAnyOfOp | ArrayContainsAllOfOp | TypeofAnyOfOp;
+
+// Map from operator to valid RHS type
+type RhsFor<T, Op> =
+    // Typeof: RHS is string (open-ended — users can register custom type descriptors)
+    Op extends TypeofOp
+        ? string
+        : Op extends TypeofAnyOfOp
+          ? string[]
+          : // Regex: RHS is RegExp
+            Op extends RegexOp
+            ? RegExp
+            : Op extends RegexAnyOfOp | RegexAllOfOp
+              ? RegExp[]
+              : // Array contains: RHS is element type
+                Op extends ArrayContainsOp
+                ? T extends (infer E)[]
+                    ? E | SubLensResult<E>
+                    : never
+                : Op extends ArrayContainsAnyOfOp | ArrayContainsAllOfOp
+                  ? T extends (infer E)[]
+                      ? (E | SubLensResult<E>)[]
+                      : never
+                  : // Any-of / all-of for equality/ordering/string: RHS is array of T
+                    Op extends AnyOfOp
+                    ? (T | SubLensResult<T>)[]
+                    : // Default: RHS is T
+                          T | SubLensResult<T>;
 
 // --- The Predicate tuples ---
 // 3-member: [sublens, op, value]        — standard ops
 // 4-member: [sublens, rangeOp, lo, hi]  — range ops (avoids nested tuple inference issues)
 
-type Predicate3<T, Op extends Exclude<OpFor<T>, RangeOp> = Exclude<OpFor<T>, RangeOp>> = [SubLensResult<T>, Op, RhsFor<T, Op>];
-type Predicate4<T> = [SubLensResult<T>, RangeOp, T | SubLensResult<T>, T | SubLensResult<T>];
-
 // --- or() / and() with mapped variadic tuples ---
 
 type PredicateResult = { readonly __predicate: true };
-
-// Extract T from a SubLensResult sitting in position 0 of a tuple
-type InferT<Tuple> = Tuple extends [SubLensResult<infer T>, ...any[]] ? T : never;
 
 // Validate a single predicate tuple (3 or 4 members)
 type ValidPredicate<D, Tuple> =
@@ -242,6 +330,8 @@ type CombinatorArg<D, T> = T extends PredicateResult ? T : ValidPredicate<D, T>;
 type CombinatorFn<D> = {
     or<Tuples extends ([any, any, any] | [any, any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
     and<Tuples extends ([any, any, any] | [any, any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
+    not<T extends [any, any, any] | [any, any, any, any] | PredicateResult>(condition: CombinatorArg<D, T>): PredicateResult;
+    xor<Tuples extends ([any, any, any] | [any, any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
 };
 
 // The $ passed into .where() for combinatorial logic
@@ -258,15 +348,15 @@ type Item<D> = TreeItemOf<D>;
 // Unified: always a single callback returning either a tuple or a PredicateResult.
 // $ is in scope for the whole expression, so sublens-on-RHS is natural.
 
-type WhereClause<D> = {
+type WhereClause<D, C extends Cardinality> = {
     // 3-member tuple: .where($ => [$("age"), ">", 12])
-    <T, Op extends OpFor<T>>(predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, Op, RhsFor<T, Op>]): TreePipeline<D, "multi">;
+    <T, Op extends OpFor<T>>(predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, Op, RhsFor<T, Op>]): TreePipeline<D, C>;
 
     // 4-member tuple: .where($ => [$("age"), "><", 18, 65])
-    <T>(predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, RangeOp, T | SubLensResult<T>, T | SubLensResult<T>]): TreePipeline<D, "multi">;
+    <T>(predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, RangeOp, T | SubLensResult<T>, T | SubLensResult<T>]): TreePipeline<D, C>;
 
     // Combinator: .where($ => $.or([...], [...]))
-    (predicate: (sb: WhereCombinator<D>) => PredicateResult): TreePipeline<D, "multi">;
+    (predicate: (sb: WhereCombinator<D>) => PredicateResult): TreePipeline<D, C>;
 };
 
 // --- Sort ---
@@ -288,6 +378,8 @@ type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | u
 
 interface Terminals<D, C extends Cardinality> {
     get(): Promise<TerminalResult<D, C>>;
+    count(): Promise<number>;
+    exists(): Promise<boolean>;
     update(updater: Updater<D, Item<D>>): Promise<TerminalResult<D, C>>;
     pluck(): Promise<TerminalResult<D, C>>;
     splice(): Promise<TerminalResult<D, C>>;
@@ -300,7 +392,7 @@ interface Terminals<D, C extends Cardinality> {
 
 interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     // Filtering
-    where: WhereClause<D>;
+    where: WhereClause<D, C>;
 
     // Tree traversal (always produces multi)
     ancestors(): TreePipeline<D, "multi">;
@@ -328,20 +420,7 @@ interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
 
 // --- Test the Pipeline ---
 
-declare const myDb: {
-    // Direct methods
-    get(target: ListOr<TreeId>): Promise<Item<TestData> | undefined>;
-    pluck(target: ListOr<TreeId>): Promise<Item<TestData> | undefined>;
-
-    // Chain starters → pipeline
-    where: WhereClause<TestData>;
-    select(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
-    ancestors(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
-    children(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
-    parent(target: ListOr<TreeId>): TreePipeline<TestData, "single">;
-    deep(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
-    wide(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
-};
+declare const myDb: TreeDBNew<TestData>;
 
 // --- Pipeline test cases ---
 
@@ -406,3 +485,41 @@ const r10 = myDb.where(($) => [$("nested")("deep"), ">", 5]).get();
 // Sublens utility
 const r11 = myDb.where(($) => [$("roles").size(), ">", 2]).get();
 //    ^? Promise<Item<TestData>[]>
+
+// --- Operator coverage tests ---
+
+// =| (equality any-of): age is any of these values
+const op1 = myDb.where(($) => [$("age"), "=|", [18, 21, 25]]).get();
+
+// !=| (not in): age is none of these
+const op2 = myDb.where(($) => [$("age"), "!=|", [18, 21, 25]]).get();
+
+// ?& (array contains all): roles contains ALL of these
+const op3 = myDb.where(($) => [$("roles"), "?&", ["admin", "editor"]]).get();
+
+// !? (array does not contain): roles does not contain "banned"
+const op4 = myDb.where(($) => [$("roles"), "!?", "banned"]).get();
+
+// >=< (inclusive range, 4-member)
+const op5 = myDb.where(($) => [$("age"), ">=<", 18, 65]).get();
+
+// ~ (regex match)
+const op6 = myDb.where(($) => [$("name"), "~", /^Alice/i]).get();
+
+// ~| (regex any-of)
+const op7 = myDb.where(($) => [$("name"), "~|", [/^Alice/, /^Bob/]]).get();
+
+// : (typeof check)
+const op8 = myDb.where(($) => [$("name"), ":", "string"]).get();
+
+// :| (typeof any-of)
+const op9 = myDb.where(($) => [$("age"), ":|", ["number", "string"]]).get();
+
+// %_ (starts with, insensitive)
+const op10 = myDb.where(($) => [$("name"), "%_", "ali"]).get();
+
+// !>= (not greater or equal)
+const op11 = myDb.where(($) => [$("age"), "!>=", 18]).get();
+
+// >| (ordering any-of): age greater than any of these
+const op12 = myDb.where(($) => [$("age"), ">|", [18, 21]]).get();

@@ -3,6 +3,7 @@ export type Codec = {
     parse: (token: unknown) => unknown;
 };
 
+export type ListOf<D> = Set<D> | D[];
 export type ListOr<D> = D | Set<D> | D[];
 export type Updater<T, C> = T | ((prev: T, context: C) => T);
 
