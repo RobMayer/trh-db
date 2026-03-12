@@ -199,23 +199,20 @@ type StringOp = "%" | "%|";
 type ArrayContainsOp = "?";
 type ArrayIncludesOp = "=|" | "!|";
 
-// Map from value type T to valid operators
-type OpFor<T> = EqualityOp | (T extends number ? OrderingOp | RangeOp : never) | (T extends string ? OrderingOp | StringOp : never) | (T extends any[] ? ArrayContainsOp | ArrayIncludesOp : never);
+// Map from value type T to valid operators (3-member predicates only)
+// RangeOp excluded — range ops always use 4-member predicates.
+type OpFor<T> = EqualityOp | (T extends number ? OrderingOp : never) | (T extends string ? OrderingOp | StringOp : never) | (T extends any[] ? ArrayContainsOp | ArrayIncludesOp : never);
 
-// Map from operator to valid RHS type
-// Most ops: RHS is T or SubLensResult<T>
-// Range op "><": RHS is a pair [lo, hi]. Accepts both tuple and array form
-//   because TS doesn't push tuple context typing into nested positions.
-// Array includes "=|" | "!|": RHS is T (which is already an array)
-type RhsFor<T, Op> = Op extends RangeOp
-    ? [T | SubLensResult<T>, T | SubLensResult<T>] | (T | SubLensResult<T>)[]
-    : Op extends ArrayContainsOp
-      ? (T extends (infer E)[] ? E | SubLensResult<E> : never)
-      : T | SubLensResult<T>;
+// Map from operator to valid RHS type (for 3-member predicates)
+// Range ops use 4-member predicates instead, so excluded here.
+type RhsFor<T, Op> = Op extends ArrayContainsOp ? (T extends (infer E)[] ? E | SubLensResult<E> : never) : T | SubLensResult<T>;
 
-// --- The Predicate tuple ---
+// --- The Predicate tuples ---
+// 3-member: [sublens, op, value]        — standard ops
+// 4-member: [sublens, rangeOp, lo, hi]  — range ops (avoids nested tuple inference issues)
 
-type Predicate<D, T, Op extends OpFor<T> = OpFor<T>> = [SubLensResult<T>, Op, RhsFor<T, Op>];
+type Predicate3<T, Op extends Exclude<OpFor<T>, RangeOp> = Exclude<OpFor<T>, RangeOp>> = [SubLensResult<T>, Op, RhsFor<T, Op>];
+type Predicate4<T> = [SubLensResult<T>, RangeOp, T | SubLensResult<T>, T | SubLensResult<T>];
 
 // --- or() / and() with mapped variadic tuples ---
 
@@ -224,20 +221,27 @@ type PredicateResult = { readonly __predicate: true };
 // Extract T from a SubLensResult sitting in position 0 of a tuple
 type InferT<Tuple> = Tuple extends [SubLensResult<infer T>, ...any[]] ? T : never;
 
-// Validate a single predicate tuple
-type ValidPredicate<D, Tuple> = Tuple extends [SubLensResult<infer T>, infer Op, any]
-    ? Op extends OpFor<T>
-        ? [SubLensResult<T>, Op, RhsFor<T, Op>]
-        : [SubLensResult<T>, OpFor<T>, "ERROR: invalid operator for this type"]
-    : never;
+// Validate a single predicate tuple (3 or 4 members)
+type ValidPredicate<D, Tuple> =
+    // 4-member: range op
+    Tuple extends [SubLensResult<infer T>, infer Op, any, any]
+        ? Op extends RangeOp
+            ? [SubLensResult<T>, Op, T | SubLensResult<T>, T | SubLensResult<T>]
+            : [SubLensResult<T>, RangeOp, "ERROR: only range ops use 4-member predicates"]
+        : // 3-member: standard op
+          Tuple extends [SubLensResult<infer T>, infer Op, any]
+          ? Op extends OpFor<T>
+              ? [SubLensResult<T>, Op, RhsFor<T, Op>]
+              : [SubLensResult<T>, OpFor<T>, "ERROR: invalid operator for this type"]
+          : never;
 
 // The combinator functions
-// Each condition can be a predicate tuple OR a nested PredicateResult (from another or/and)
+// Each condition can be a predicate tuple (3 or 4 members) OR a nested PredicateResult
 type CombinatorArg<D, T> = T extends PredicateResult ? T : ValidPredicate<D, T>;
 
 type CombinatorFn<D> = {
-    or<Tuples extends ([any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
-    and<Tuples extends ([any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
+    or<Tuples extends ([any, any, any] | [any, any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
+    and<Tuples extends ([any, any, any] | [any, any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
 };
 
 // The $ passed into .where() for combinatorial logic
@@ -255,10 +259,11 @@ type Item<D> = TreeItemOf<D>;
 // $ is in scope for the whole expression, so sublens-on-RHS is natural.
 
 type WhereClause<D> = {
-    // Tuple predicate: .where($ => [$("age"), ">", 12])
-    <T, Op extends OpFor<T>>(
-        predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, Op, RhsFor<T, Op>],
-    ): TreePipeline<D, "multi">;
+    // 3-member tuple: .where($ => [$("age"), ">", 12])
+    <T, Op extends OpFor<T>>(predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, Op, RhsFor<T, Op>]): TreePipeline<D, "multi">;
+
+    // 4-member tuple: .where($ => [$("age"), "><", 18, 65])
+    <T>(predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, RangeOp, T | SubLensResult<T>, T | SubLensResult<T>]): TreePipeline<D, "multi">;
 
     // Combinator: .where($ => $.or([...], [...]))
     (predicate: (sb: WhereCombinator<D>) => PredicateResult): TreePipeline<D, "multi">;
@@ -386,8 +391,12 @@ const r7 = myDb.where(($) => [$("active"), "=", false]).prune();
 const r8 = myDb.where(($) => [$("age"), "=", $("logins")]).get();
 //    ^? Promise<Item<TestData>[]>
 
-// Range with sublens on one side
-const r9 = myDb.where(($) => [$("age"), "><", [18, $("logins")]]).get();
+// Range with sublens on one side (4-member tuple)
+const r9 = myDb.where(($) => [$("age"), "><", 18, $("logins")]).get();
+//    ^? Promise<Item<TestData>[]>
+
+// Range inside combinator (4-member tuple in $.or)
+const r9b = myDb.where(($) => $.or([$("age"), "><", 18, 25], [$("name"), "%", "A"])).get();
 //    ^? Promise<Item<TestData>[]>
 
 // Deep sublens access
