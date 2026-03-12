@@ -134,3 +134,266 @@ interface SelectorTerminator {
     pluck: () => Promise<unknown>;
     //...etc
 }
+
+// ============================================================
+// Tuple Predicate Typing Experiment
+// ============================================================
+
+// Test data shape
+type TestData = {
+    name: string;
+    age: number;
+    roles: string[];
+    logins: number;
+    active: boolean;
+    nested: { deep: number };
+};
+
+// --- SubLens: a property accessor that carries the resolved type ---
+
+// A chainable sublens result. Calling it with a key drills deeper into the type.
+// Utility methods (.size(), .length(), .keys(), etc.) project to a derived type.
+
+// Base: phantom type + utility projections
+interface SubLensResultBase<T> {
+    readonly __phantom: T;
+
+    // .size() — for arrays, sets, maps, or strings → number
+    size(): T extends { length: number } | { size: number } ? SubLensResult<number> : never;
+
+    // .length() — alias for .size() on array/string
+    length(): T extends { length: number } ? SubLensResult<number> : never;
+
+    // .keys() — for objects/maps → string[]
+    keys(): T extends Record<string, any> ? SubLensResult<string[]> : never;
+
+    // .values() — for objects/maps → array of values
+    values(): T extends Record<string, infer V> ? SubLensResult<V[]> : never;
+
+    // .at(n) — for arrays → element type
+    at(index: number): T extends (infer E)[] ? SubLensResult<E> : never;
+}
+
+// Deep property access: only available when T is an object (not a primitive)
+interface SubLensResultCallable<T> {
+    <K extends keyof T>(key: K): SubLensResult<T[K]>;
+}
+
+// Combine: call signature only present for object types
+type SubLensResult<T> = SubLensResultBase<T> & (NonNullable<T> extends object ? SubLensResultCallable<NonNullable<T>> : {});
+
+// The builder function the user calls: $("age") => SubLensResult<number>
+type SubLensBuilder<D> = {
+    <K extends keyof D>(key: K): SubLensResult<D[K]>;
+    // meta-fields
+    readonly ID: SubLensResult<string>;
+    readonly DEPTH: SubLensResult<number>;
+};
+
+// --- Operators grouped by the type they apply to ---
+
+type EqualityOp = "=" | "!=";
+type OrderingOp = ">" | "<" | ">=" | "<=";
+type RangeOp = "><";
+type StringOp = "%" | "%|";
+type ArrayContainsOp = "?";
+type ArrayIncludesOp = "=|" | "!|";
+
+// Map from value type T to valid operators
+type OpFor<T> = EqualityOp | (T extends number ? OrderingOp | RangeOp : never) | (T extends string ? OrderingOp | StringOp : never) | (T extends any[] ? ArrayContainsOp | ArrayIncludesOp : never);
+
+// Map from operator to valid RHS type
+// Most ops: RHS is T or SubLensResult<T>
+// Range op "><": RHS is a pair [lo, hi]. Accepts both tuple and array form
+//   because TS doesn't push tuple context typing into nested positions.
+// Array includes "=|" | "!|": RHS is T (which is already an array)
+type RhsFor<T, Op> = Op extends RangeOp
+    ? [T | SubLensResult<T>, T | SubLensResult<T>] | (T | SubLensResult<T>)[]
+    : Op extends ArrayContainsOp
+      ? (T extends (infer E)[] ? E | SubLensResult<E> : never)
+      : T | SubLensResult<T>;
+
+// --- The Predicate tuple ---
+
+type Predicate<D, T, Op extends OpFor<T> = OpFor<T>> = [SubLensResult<T>, Op, RhsFor<T, Op>];
+
+// --- or() / and() with mapped variadic tuples ---
+
+type PredicateResult = { readonly __predicate: true };
+
+// Extract T from a SubLensResult sitting in position 0 of a tuple
+type InferT<Tuple> = Tuple extends [SubLensResult<infer T>, ...any[]] ? T : never;
+
+// Validate a single predicate tuple
+type ValidPredicate<D, Tuple> = Tuple extends [SubLensResult<infer T>, infer Op, any]
+    ? Op extends OpFor<T>
+        ? [SubLensResult<T>, Op, RhsFor<T, Op>]
+        : [SubLensResult<T>, OpFor<T>, "ERROR: invalid operator for this type"]
+    : never;
+
+// The combinator functions
+// Each condition can be a predicate tuple OR a nested PredicateResult (from another or/and)
+type CombinatorArg<D, T> = T extends PredicateResult ? T : ValidPredicate<D, T>;
+
+type CombinatorFn<D> = {
+    or<Tuples extends ([any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
+    and<Tuples extends ([any, any, any] | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<D, Tuples[K]> }): PredicateResult;
+};
+
+// The $ passed into .where() for combinatorial logic
+type WhereCombinator<D> = SubLensBuilder<D> & CombinatorFn<D>;
+
+// ============================================================
+// Pipeline Interface
+// ============================================================
+
+// The item type for a tree pipeline
+type Item<D> = TreeItemOf<D>;
+
+// --- .where() overloads on the pipeline ---
+// Unified: always a single callback returning either a tuple or a PredicateResult.
+// $ is in scope for the whole expression, so sublens-on-RHS is natural.
+
+type WhereClause<D> = {
+    // Tuple predicate: .where($ => [$("age"), ">", 12])
+    <T, Op extends OpFor<T>>(
+        predicate: (sb: WhereCombinator<D>) => [SubLensResult<T>, Op, RhsFor<T, Op>],
+    ): TreePipeline<D, "multi">;
+
+    // Combinator: .where($ => $.or([...], [...]))
+    (predicate: (sb: WhereCombinator<D>) => PredicateResult): TreePipeline<D, "multi">;
+};
+
+// --- Sort ---
+
+type SortDirection = "asc" | "desc";
+
+type SortClause<D, C extends Cardinality> = {
+    <T>(accessor: (sb: SubLensBuilder<D>) => SubLensResult<T>, direction: SortDirection): TreePipeline<D, C>;
+};
+
+// --- Cardinality ---
+
+type Cardinality = "single" | "multi";
+
+// --- Terminals ---
+// Return type depends on cardinality
+
+type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | undefined : Item<D>[];
+
+interface Terminals<D, C extends Cardinality> {
+    get(): Promise<TerminalResult<D, C>>;
+    update(updater: Updater<D, Item<D>>): Promise<TerminalResult<D, C>>;
+    pluck(): Promise<TerminalResult<D, C>>;
+    splice(): Promise<TerminalResult<D, C>>;
+    prune(): Promise<TerminalResult<D, C>>;
+    trim(): Promise<TerminalResult<D, C>>;
+    move(newParent: string | null | ((item: Item<D>) => string | null)): Promise<TerminalResult<D, C>>;
+}
+
+// --- The Pipeline ---
+
+interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
+    // Filtering
+    where: WhereClause<D>;
+
+    // Tree traversal (always produces multi)
+    ancestors(): TreePipeline<D, "multi">;
+    parent(): TreePipeline<D, "multi">;
+    children(): TreePipeline<D, "multi">;
+    siblings(): TreePipeline<D, "multi">;
+    deep(): TreePipeline<D, "multi">;
+    wide(): TreePipeline<D, "multi">;
+    roots(): TreePipeline<D, "multi">;
+
+    // Cardinality reducers (multi → single)
+    first(): TreePipeline<D, "single">;
+    last(): TreePipeline<D, "single">;
+    at(index: number): TreePipeline<D, "single">;
+
+    // Presentation (preserves cardinality)
+    sort: SortClause<D, C>;
+    distinct(): TreePipeline<D, C>;
+    slice(start: number, end?: number): TreePipeline<D, C>;
+    paginate(page: number, perPage: number): TreePipeline<D, C>;
+
+    // Per-item sub-pipeline
+    each(fn: (sub: TreePipeline<D, "single">) => TreePipeline<D, Cardinality>): TreePipeline<D, "multi">;
+}
+
+// --- Test the Pipeline ---
+
+declare const myDb: {
+    // Direct methods
+    get(target: ListOr<TreeId>): Promise<Item<TestData> | undefined>;
+    pluck(target: ListOr<TreeId>): Promise<Item<TestData> | undefined>;
+
+    // Chain starters → pipeline
+    where: WhereClause<TestData>;
+    select(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
+    ancestors(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
+    children(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
+    parent(target: ListOr<TreeId>): TreePipeline<TestData, "single">;
+    deep(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
+    wide(target: ListOr<TreeId>): TreePipeline<TestData, "multi">;
+};
+
+// --- Pipeline test cases ---
+
+// Basic: where → get (multi)
+const r1 = myDb.where(($) => [$("age"), ">", 12]).get();
+//    ^? Promise<Item<TestData>[]>
+
+// Cardinality collapse: where → first → get (single)
+const r2 = myDb
+    .where(($) => [$("age"), ">", 12])
+    .first()
+    .get();
+//    ^? Promise<Item<TestData> | undefined>
+
+// Traversal shortcut → chain
+const r3 = myDb
+    .ancestors("someId")
+    .where(($) => [$.DEPTH, "=", 0])
+    .get();
+//    ^? Promise<Item<TestData>[]>
+
+// Full rootsOfMinors pipeline
+const r4 = myDb
+    .where(($) => [$("age"), "<", 18])
+    .each((q) => q.ancestors().last())
+    .distinct()
+    .get();
+//    ^? Promise<Item<TestData>[]>
+
+// Sort + paginate
+const r5 = myDb
+    .where(($) => [$("age"), ">", 12])
+    .sort(($) => $("name"), "asc")
+    .paginate(2, 30)
+    .get();
+//    ^? Promise<Item<TestData>[]>
+
+// Combinator where
+const r6 = myDb.where(($) => $.or([$("age"), ">", 18], [$("roles"), "?", "admin"])).get();
+//    ^? Promise<Item<TestData>[]>
+
+// Mutation terminal
+const r7 = myDb.where(($) => [$("active"), "=", false]).prune();
+//    ^? Promise<Item<TestData>[]>
+
+// Sublens on RHS
+const r8 = myDb.where(($) => [$("age"), "=", $("logins")]).get();
+//    ^? Promise<Item<TestData>[]>
+
+// Range with sublens on one side
+const r9 = myDb.where(($) => [$("age"), "><", [18, $("logins")]]).get();
+//    ^? Promise<Item<TestData>[]>
+
+// Deep sublens access
+const r10 = myDb.where(($) => [$("nested")("deep"), ">", 5]).get();
+//    ^? Promise<Item<TestData>[]>
+
+// Sublens utility
+const r11 = myDb.where(($) => [$("roles").size(), ">", 2]).get();
+//    ^? Promise<Item<TestData>[]>
