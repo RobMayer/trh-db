@@ -368,3 +368,43 @@ const u9: StubPipeline = uWhere($ => $.or(
 
 // Equality any-of with variant-specific key — FAILS today
 const u10: StubPipeline = uWhere($ => [$("name"), "=|", ["Alice", "Bob"]]);
+
+// ============================================================
+// Optional Field Tests
+// ============================================================
+
+type OptionalData = {
+    name: string;
+    age: number;
+    nickname?: string;
+    score?: number;
+    tags?: string[];
+    nested: { value: number; label?: string };
+};
+
+declare const oWhere: WhereClause<OptionalData, TestMeta, StubPipeline>;
+declare const oSort: SortClause<OptionalData, TestMeta, StubPipeline>;
+
+// Required fields — should work
+const o1: StubPipeline = oWhere($ => [$("name"), "=", "Alice"]);
+const o2: StubPipeline = oWhere($ => [$("age"), ">", 18]);
+
+// Optional fields — should these work?
+const o3: StubPipeline = oWhere($ => [$("nickname"), "=", "Ali"]);
+const o4: StubPipeline = oWhere($ => [$("score"), ">", 50]);
+const o5: StubPipeline = oWhere($ => [$("tags"), "#", "admin"]);
+
+// Optional field in sort
+const o6: StubPipeline = oSort($ => $("score"), "asc");
+
+// String ops on optional string
+const o7: StubPipeline = oWhere($ => [$("nickname"), "%", "Ali"]);
+
+// Nested optional field
+const o8: StubPipeline = oWhere($ => [$("nested")("label"), "%", "hello"]);
+
+// Optional field on RHS
+const o9: StubPipeline = oWhere($ => [$("age"), ">", $("score")]);
+
+// Size of optional array
+const o10: StubPipeline = oWhere($ => [$("tags").size(), ">", 0]);
