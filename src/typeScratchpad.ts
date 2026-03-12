@@ -50,26 +50,26 @@ const t3b = treeSel(($) => $.roots.where($.CHILDREN, "#>", 3)); // new: symbol +
 
 const i1b = treeSel(($) => $.roots.where("type", "=", "alpha"));
 
-const i2a = treeSel(($) => $.allDeep.where($.ID, "=|", ["abc123", "123abc"]));
+const i2a = treeSel(($) => $.deep.where($.ID, "=|", ["abc123", "123abc"]));
 
 // select all roots that are among of any item's related array
-const i3a = treeSel(($) => $.roots.where($.ID, "=|", $.allDeep("related")("*"))); // Wildcard needed in order to flatten the array
+const i3a = treeSel(($) => $.roots.where($.ID, "=|", $.deep("related")("*"))); // Wildcard needed in order to flatten the array
 
 // select all nodes who'se related references a root item
-const i4a = treeSel(($) => $.allDeep.where("related", "?|", $.roots.ID)); // projection terminal .ID on item chain
+const i4a = treeSel(($) => $.deep.where("related", "?|", $.roots.ID)); // projection terminal .ID on item chain
 
 // select all nodes that has a related who'se size is greater it's age...
-const i5a = treeSel(($) => $.allDeep.where("related", "#>", (_) => _("age")));
+const i5a = treeSel(($) => $.deep.where("related", "#>", (_) => _("age")));
 
 // select items whose name matches one of their own related values (self-ref sublens operand)
-const i6a = treeSel(($) => $.allDeep.where("name", "=|", (_) => _("related")));
+const i6a = treeSel(($) => $.deep.where("name", "=|", (_) => _("related")));
 
-const i8a = treeSel((Q) => Q.allDeep.where(($) => $("address")("city"), "%", "new"));
+const i8a = treeSel((Q) => Q.deep.where(($) => $("address")("city"), "%", "new"));
 
-const i9a = treeSel((Q) => Q.allDeep.where(($) => $.or($("age", ">=", 4), $("type", "=", "bravo"))));
+const i9a = treeSel((Q) => Q.deep.where(($) => $.or($("age", ">=", 4), $("type", "=", "bravo"))));
 
 const i9b = treeSel((Q) =>
-    Q.allDeep.where(($) =>
+    Q.deep.where(($) =>
         $.or(
             $.and($("name", "#>", 3)),
             $((_) => _("address")("city"), "%", "new"),
@@ -78,24 +78,26 @@ const i9b = treeSel((Q) =>
     ),
 );
 
+const rootsOfMinors = treeSel((Q) => Q.deep.where("age", "<", 18).ancestors.where(Q.DEPTH, "=", 0));
+
 const r1a = treeRem((Q) => {
-    return Q.allDeep.where(Q.CHILDREN, "#=", 0);
+    return Q.deep.where(Q.CHILDREN, "#=", 0);
 });
 
 const r1b = treeRem((Q) => {
-    return Q.allDeep.where(Q.CHILDREN, "#=", 0).ancestors.where(Q.ID, "=", "abc123");
+    return Q.deep.where(Q.CHILDREN, "#=", 0).ancestors.where(Q.ID, "=", "abc123");
 });
 
 const u1a = treeUpd(
     (Q) => {
-        return Q.allDeep.where(Q.CHILDREN, "#=", 0)("roles");
+        return Q.deep.where(Q.CHILDREN, "#=", 0)("roles");
     },
     (prev, ctx) => prev,
 );
 
 const u1b = treeUpd(
     (Q) => {
-        return Q.allDeep.where(Q.CHILDREN, "#=", 0);
+        return Q.deep.where(Q.CHILDREN, "#=", 0);
     },
     (prev, ctx) => prev,
 );
@@ -103,7 +105,7 @@ const u1b = treeUpd(
 //oddly, this works... though, we might need to think about ctx some more....
 const u1c = treeUpd(
     (Q) => {
-        return Q.allDeep.where(Q.CHILDREN, "#=", 0)("roles")("*");
+        return Q.deep.where(Q.CHILDREN, "#=", 0)("roles")("*");
     },
     (prev, ctx) => prev, // interesting...
 );
@@ -430,8 +432,8 @@ interface TreeRootBase<D, C extends ChainContext> extends Queryable<TreeItemOf<D
     /** Structural entry points */
     readonly roots: ItemChainFor<D, "multi", C>;
     readonly leaves: ItemChainFor<D, "multi", C>;
-    readonly allWide: ItemChainFor<D, "multi", C>;
-    readonly allDeep: ItemChainFor<D, "multi", C>;
+    readonly wide: ItemChainFor<D, "multi", C>;
+    readonly deep: ItemChainFor<D, "multi", C>;
 
     /** Set operations */
     union(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): ItemChainFor<D, "multi", C>;
@@ -674,13 +676,13 @@ const a2 = treeSelect(($) => $.roots); // TreeItemOf<Sample>[]
 const a3 = treeSelect(($) => $.roots.where("age", ">", 18)); // TreeItemOf<Sample>[]
 const a4 = treeSelect(($) => $.roots.children); // TreeItemOf<Sample>[]
 const a5 = treeSelect(($) => $.roots.first()); // TreeItemOf<Sample>
-const a6 = treeSelect(($) => $.allWide); // TreeItemOf<Sample>[] (BFS)
-const a7 = treeSelect(($) => $.allDeep); // TreeItemOf<Sample>[] (DFS)
+const a6 = treeSelect(($) => $.wide); // TreeItemOf<Sample>[] (BFS)
+const a7 = treeSelect(($) => $.deep); // TreeItemOf<Sample>[] (DFS)
 
 // ── Set operations ──
 const a8 = treeSelect(($) => $.union($.roots.where("roles", "?", "admin"), $.roots.where("age", ">", 20)));
 const a9 = treeSelect(($) => $.intersect($.roots.where("roles", "?", "admin"), $.roots.where("age", ">", 20)));
-const a10 = treeSelect(($) => $.exclude($.allWide, $.leaves));
+const a10 = treeSelect(($) => $.exclude($.wide, $.leaves));
 
 // ── BFS/DFS descendants ──
 const a11 = treeSelect(($) => $.roots.wideDescendants);
@@ -798,17 +800,17 @@ const n3 = treeSelect(($) => $.roots.where("address", "#>", 1)); // ✓ address 
 const n4 = treeSelect(($) => $.roots.where("age", "#>", 5));
 
 // ── Cross-reference queryable operands (pattern 2) ──
-const q1 = treeSelect(($) => $.roots.where($.ID, "=|", $.allDeep("roles")("*"))); // ID in any item's roles
-const q2 = treeSelect(($) => $.allDeep.where("roles", "?|", $.roots("roles")("*"))); // roles overlap with root roles
-const q3 = treeSelect(($) => $.roots.where("age", "=", $.allDeep.first().DEPTH)); // age equals first item's depth
+const q1 = treeSelect(($) => $.roots.where($.ID, "=|", $.deep("roles")("*"))); // ID in any item's roles
+const q2 = treeSelect(($) => $.deep.where("roles", "?|", $.roots("roles")("*"))); // roles overlap with root roles
+const q3 = treeSelect(($) => $.roots.where("age", "=", $.deep.first().DEPTH)); // age equals first item's depth
 
 // ── Self-referencing sublens operands (pattern 3) ──
-const q4 = treeSelect(($) => $.allDeep.where("roles", "#>", (_) => _("age"))); // more roles than age
-const q5 = treeSelect(($) => $.allDeep.where("name", "=|", (_) => _("roles"))); // name in own roles
+const q4 = treeSelect(($) => $.deep.where("roles", "#>", (_) => _("age"))); // more roles than age
+const q5 = treeSelect(($) => $.deep.where("name", "=|", (_) => _("roles"))); // name in own roles
 
 // ── .of() narrowing ──
-const q6 = treeSelect(($) => $.allDeep.of("abc123")); // TreeItemOf<Sample> (single)
-const q7 = treeSelect(($) => $.allDeep.of("abc123")("name")); // string (single)
+const q6 = treeSelect(($) => $.deep.of("abc123")); // TreeItemOf<Sample> (single)
+const q7 = treeSelect(($) => $.deep.of("abc123")("name")); // string (single)
 const q8 = treeSelect(($) => $.roots.of("xyz").DEPTH); // number (single)
 
 // ── Projection terminals ──
@@ -818,7 +820,7 @@ const q11 = treeSelect(($) => $.roots.first().DEPTH); // number
 const q12 = treeSelect(($) => $.roots.first().PARENT); // string | null
 
 // @ts-expect-error — ✗ multi queryable with scalar operator (> needs single-mode operand)
-const qe1 = treeSelect(($) => $.roots.where("age", ">", $.allDeep.DEPTH));
+const qe1 = treeSelect(($) => $.roots.where("age", ">", $.deep.DEPTH));
 
 // ── Array element where() — logic combinator (RQ2) ──
 const r1 = treeSelect(($) => $("tags").where((l) => l.or(l("priority", ">", 5), l("label", "=", "urgent"))));
@@ -845,17 +847,17 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 
 // ── .siblings ──
 const sib1 = treeSelect(($) => $.roots.first().siblings); // TreeItemOf<Sample>[]
-const sib2 = treeSelect(($) => $.allDeep.where("name", "=", "Alice").siblings.where("age", ">", 10)); // siblings of Alice, filtered
+const sib2 = treeSelect(($) => $.deep.where("name", "=", "Alice").siblings.where("age", ">", 10)); // siblings of Alice, filtered
 
 // ── .exists() ──
 const ex1 = treeSelect(($) => $.roots.where("name", "=", "Alice").exists()); // boolean
-const ex2 = treeSelect(($) => $.allDeep.where("roles", "?", "admin").exists()); // boolean
+const ex2 = treeSelect(($) => $.deep.where("roles", "?", "admin").exists()); // boolean
 const ex3 = treeSelect(($) => $.of("abc123").exists()); // boolean — does this ID exist?
 
 // ── .at() ──
 const at1 = treeSelect(($) => $.roots.at(2)); // TreeItemOf<Sample> — third root
 const at2 = treeSelect(($) => $.roots.at(2)("name")); // string — third root's name
-const at3 = treeSelect(($) => $.allDeep.where("age", ">", 18).at(0)); // same as .first()
+const at3 = treeSelect(($) => $.deep.where("age", ">", 18).at(0)); // same as .first()
 
 // ── .sort() with sublens ──
 const so1 = treeSelect(($) => $.roots.sort((sub) => sub("address")("city"))); // sort by nested address.city
@@ -863,7 +865,7 @@ const so2 = treeSelect(($) => $.roots.sort((sub) => sub("address")("city"), { di
 const so3 = treeSelect(($) => $("tags").sort((sub) => sub("label"))); // sort tag elements by label
 
 // ── .distinct() with sublens ──
-const di1 = treeSelect(($) => $.allDeep.distinct((sub) => sub("address")("city"))); // dedup by nested city
+const di1 = treeSelect(($) => $.deep.distinct((sub) => sub("address")("city"))); // dedup by nested city
 const di2 = treeSelect(($) => $("tags").distinct((sub) => sub("label"))); // dedup tag elements by label
 
 // ── .of() with multiple IDs ──
