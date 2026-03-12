@@ -24,6 +24,10 @@ type TestPayload =
           references: {
               name: string;
               age: number;
+              subObject: {
+                  someNumber: number;
+                  someString: string;
+              };
           }[];
       }
     | {
@@ -419,8 +423,9 @@ type ItemChainFor<D, M extends Mode, C extends ChainContext> = C extends "lens" 
  * Lens roots return TreeItemChain (callable for data projection).
  */
 interface TreeRootBase<D, C extends ChainContext> extends Queryable<TreeItemOf<D>, "multi", "items"> {
-    /** Direct ID lookup */
+    /** Direct ID lookup — single ID narrows to single, multiple IDs stay multi */
     of(id: string): ItemChainFor<D, "single", C>;
+    of(...ids: string[]): ItemChainFor<D, "multi", C>;
 
     /** Structural entry points */
     readonly roots: ItemChainFor<D, "multi", C>;
@@ -482,8 +487,9 @@ interface TreeItemChainBase<D, M extends Mode, C extends ChainContext> extends Q
     /** Filter — general data field predicate (chained .where().where() = implicit AND) */
     where<F extends AllStringKeys<D>, Op extends CompOp>(field: F, op: Op, value: WhereOperand<OperandFor<D, F, Op>, D>): ItemChainFor<D, M, C>;
 
-    /** Narrow to single by ID */
+    /** Narrow to single by ID, or multi with multiple IDs */
     of(id: string): ItemChainFor<D, "single", C>;
+    of(...ids: string[]): ItemChainFor<D, "multi", C>;
 
     /** Narrow to single (multi-mode only) */
     first(): M extends "multi" ? ItemChainFor<D, "single", C> : never;
@@ -492,7 +498,9 @@ interface TreeItemChainBase<D, M extends Mode, C extends ChainContext> extends Q
 
     /** Collection operations (multi-mode only) */
     sort(field: AllStringKeys<D> | MetaToken, config?: SortConfig): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
+    sort(field: (sub: TreeDataChain<D, D, "single">) => Queryable<any, any, "data">, config?: SortConfig): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
     distinct(field?: AllStringKeys<D> | MetaToken): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
+    distinct(field: (sub: TreeDataChain<D, D, "single">) => Queryable<any, any, "data">): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
     slice(start: number, end?: number): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
 
     /** Structural traversal */
@@ -623,8 +631,10 @@ interface TreeDataArrayChain<D, V extends readonly unknown[], M extends Mode> ex
 
     /** Element collection ops */
     sort(field: ElementPredField<V[number]>, config?: SortConfig): TreeDataArrayChain<D, V, M>;
+    sort(field: (sub: TreeDataChain<V[number], V[number], "single">) => Queryable<any, any, "data">, config?: SortConfig): TreeDataArrayChain<D, V, M>;
     slice(start: number, end?: number): TreeDataArrayChain<D, V, M>;
     distinct(field?: ElementPredField<V[number]>): TreeDataArrayChain<D, V, M>;
+    distinct(field: (sub: TreeDataChain<V[number], V[number], "single">) => Queryable<any, any, "data">): TreeDataArrayChain<D, V, M>;
 
     /** Measure array: element count per item */
     size(): Queryable<number, M, "data">;
@@ -833,6 +843,35 @@ const s7 = treeSelect(($) => $.roots.where((sub) => sub("name").size(), ">=<", [
 // .size() on non-sizable type returns never — blocks downstream but call itself is valid.
 const s9 = treeSelect(($) => $("age").size()); // never[]
 
+// ── .siblings ──
+const sib1 = treeSelect(($) => $.roots.first().siblings); // TreeItemOf<Sample>[]
+const sib2 = treeSelect(($) => $.allDeep.where("name", "=", "Alice").siblings.where("age", ">", 10)); // siblings of Alice, filtered
+
+// ── .exists() ──
+const ex1 = treeSelect(($) => $.roots.where("name", "=", "Alice").exists()); // boolean
+const ex2 = treeSelect(($) => $.allDeep.where("roles", "?", "admin").exists()); // boolean
+const ex3 = treeSelect(($) => $.of("abc123").exists()); // boolean — does this ID exist?
+
+// ── .at() ──
+const at1 = treeSelect(($) => $.roots.at(2)); // TreeItemOf<Sample> — third root
+const at2 = treeSelect(($) => $.roots.at(2)("name")); // string — third root's name
+const at3 = treeSelect(($) => $.allDeep.where("age", ">", 18).at(0)); // same as .first()
+
+// ── .sort() with sublens ──
+const so1 = treeSelect(($) => $.roots.sort((sub) => sub("address")("city"))); // sort by nested address.city
+const so2 = treeSelect(($) => $.roots.sort((sub) => sub("address")("city"), { direction: "desc" })); // desc
+const so3 = treeSelect(($) => $("tags").sort((sub) => sub("label"))); // sort tag elements by label
+
+// ── .distinct() with sublens ──
+const di1 = treeSelect(($) => $.allDeep.distinct((sub) => sub("address")("city"))); // dedup by nested city
+const di2 = treeSelect(($) => $("tags").distinct((sub) => sub("label"))); // dedup tag elements by label
+
+// ── .of() with multiple IDs ──
+const of1 = treeSelect(($) => $.of("a")); // TreeItemOf<Sample> — single
+const of2 = treeSelect(($) => $.of("a", "b", "c")); // TreeItemOf<Sample>[] — multi
+const of3 = treeSelect(($) => $.of("a", "b")("name")); // string[] — multi → data projection
+const of4 = treeSelect(($) => $.roots.of("a", "b").where("age", ">", 18)); // chain continues as multi
+
 // #endregion
 // #region ─── Design Decisions ─────────────────────────────────
 
@@ -841,7 +880,7 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 //     Pather = Targetter + pure field navigation ($("key") chaining). Used by update.
 //       ("key") returns TreePatherChain (navigation only, no where/sort/slice/distinct).
 //       Ensures the path is always a valid write-back target.
-//     Lens = full query + data chains with where/sort/slice/project. Used by select.
+//     Lens = full query + data chains with where/sort/slice. Used by select.
 //       ("key") returns TreeDataChain (full filtering and reshaping capabilities).
 //     TreeTargetRoot / TreeUpdateRoot / TreeLensRoot.
 
@@ -904,8 +943,9 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 //      $.ID (on root) = meta token symbol for where() field position.
 //      $.roots.ID (on item chain) = projection terminal for operand/output use.
 
-// D19: .of(id) — narrows item chain to single by ID. Sugar for where($.ID, "=", id).
-//      Works on any mode (single or multi). No mode gating.
+// D19: .of() — ID-based item narrowing. Sugar for where($.ID, "=", id).
+//      Single arg: of(id) → "single" mode. Rest param: of(...ids) → "multi" mode.
+//      Available on both TreeRootBase and TreeItemChainBase. Works on any incoming mode.
 
 // D20: TreeDataArrayChain.where() — full where() capability for array elements.
 //      Logic combinator: where(l => l.or(...)). Sublens field: where(sub => sub("label").size(), ...).
@@ -931,6 +971,11 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 //      Scalar pather: only (key: K) drilling into nested properties.
 //      Array pather: only (index: number) and ("*") wildcard — no where/sort/slice/distinct/first/last.
 //      Array surgery (filtering, reordering) belongs in the updater callback, not the path.
+
+// D24: Sublens overloads for .sort() and .distinct() — callback (sub => sub("key")("nested")) form.
+//      TreeItemChainBase: sublens operates on TreeDataChain<D, D, "single"> — drills into item payload.
+//      TreeDataArrayChain: sublens operates on TreeDataChain<V[number], V[number], "single"> — drills into element.
+//      Mirrors the sublens pattern already used in .where() (D9, D20).
 
 // #endregion
 // #region ─── Remaining Questions ──────────────────────────────
