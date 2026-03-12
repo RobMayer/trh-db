@@ -33,6 +33,8 @@ type TestPayload =
       };
 
 declare const treeSel: TreeSelect<TestPayload>;
+declare const treeUpd: TreeUpdate<TestPayload>;
+declare const treeRem: TreePluck<TestPayload>;
 
 const t0a = treeSel(($) => $.roots.where($.ID, "=", "abc123").deepDescendants.where("age", ">", 4));
 
@@ -50,10 +52,57 @@ const i2a = treeSel(($) => $.allDeep.where($.ID, "=|", ["abc123", "123abc"]));
 const i3a = treeSel(($) => $.roots.where($.ID, "=|", $.allDeep("related")("*"))); // Wildcard needed in order to flatten the array
 
 // select all nodes who'se related references a root item
-const i4a = treeSel(($) => $.allDeep.where("related", "?|", $.roots.ID)); // ?? how do I get IDs out from a selector/lens?
+const i4a = treeSel(($) => $.allDeep.where("related", "?|", $.roots.ID)); // projection terminal .ID on item chain
 
 // select all nodes that has a related who'se size is greater it's age...
 const i5a = treeSel(($) => $.allDeep.where("related", "#>", (_) => _("age")));
+
+// select items whose name matches one of their own related values (self-ref sublens operand)
+const i6a = treeSel(($) => $.allDeep.where("name", "=|", (_) => _("related")));
+
+const i8a = treeSel((Q) => Q.allDeep.where(($) => $("address")("city"), "%", "new"));
+
+const i9a = treeSel((Q) => Q.allDeep.where(($) => $.or($("age", ">=", 4), $("type", "=", "bravo"))));
+
+const i9b = treeSel((Q) =>
+    Q.allDeep.where(($) =>
+        $.or(
+            $.and($("name", "#>", 3)),
+            $((_) => _("address")("city"), "%", "new"),
+            $("name", "=", "Alice"),
+        ),
+    ),
+);
+
+const r1a = treeRem((Q) => {
+    return Q.allDeep.where(Q.CHILDREN, "#=", 0);
+});
+
+const r1b = treeRem((Q) => {
+    return Q.allDeep.where(Q.CHILDREN, "#=", 0).ancestors.where(Q.ID, "=", "abc123");
+});
+
+const u1a = treeUpd(
+    (Q) => {
+        return Q.allDeep.where(Q.CHILDREN, "#=", 0)("roles");
+    },
+    (prev, ctx) => prev,
+);
+
+const u1b = treeUpd(
+    (Q) => {
+        return Q.allDeep.where(Q.CHILDREN, "#=", 0);
+    },
+    (prev, ctx) => prev,
+);
+
+//oddly, this works... though, we might need to think about ctx some more....
+const u1c = treeUpd(
+    (Q) => {
+        return Q.allDeep.where(Q.CHILDREN, "#=", 0)("roles")("*");
+    },
+    (prev, ctx) => prev, // interesting...
+);
 
 //#endregion
 
@@ -111,17 +160,6 @@ Non-sizable types resolve to `never`, blocking usage at compile time.
 */
 
 // ═══════════════════════════════════════════════════════════════
-// Areas of improvement
-// ═══════════════════════════════════════════════════════════════
-
-/*
-
-I'm not convinced that top level $.intersect, $.union, and $.exclude should always take in selectors. I think if you're in a situation where you need a selector, sure, but if you're in a situation where you can have a lens, then why can't you union two lenses?
-This might be a thing we defer
-
-*/
-
-// ═══════════════════════════════════════════════════════════════
 // Lens/Selector System — Type Sketch v2 (Tree-first)
 // ═══════════════════════════════════════════════════════════════
 //
@@ -131,10 +169,11 @@ This might be a thing we defer
 //   3. $.roots, .children, .parent etc. for structural navigation
 //   4. $.ID, $.PARENT, $.CHILDREN, $.DEPTH as symbol meta tokens for structural fields
 //   5. Mode tracking: "single" | "multi" flows through the chain
-//   6. Kind tracking: "items" | "data" — Selector targets items, Lens targets data
-//      Selector = "which items?" — used by pluck, splice, prune, trim, move
-//      Lens = "what property?" — used by select (projection), update (targeted mutation)
-//      A selector's .where() CAN use a lens as a predicate target
+//   6. Kind tracking: "items" | "data" — three-tier hierarchy:
+//      Targetter = "which items?" — used by pluck, splice, prune, trim, move
+//      Pather = Targetter + pure field navigation — used by update
+//      Lens = full query + data chains with where/sort/slice — used by select
+//      TreeTargetRoot / TreeUpdateRoot / TreeLensRoot
 //   7. Array-typed data gets its own chain (TreeDataArrayChain) with element-level ops
 
 import type { TreeItemOf, Updater } from "./types";
@@ -143,6 +182,7 @@ import type { TreeItemOf, Updater } from "./types";
 
 type Mode = "single" | "multi";
 type Kind = "items" | "data";
+type ChainContext = "lens" | "target" | "pather";
 
 /** Single symbol key hides brand from intellisense */
 declare const QueryBrand: unique symbol;
@@ -158,6 +198,9 @@ interface Queryable<T, M extends Mode, K extends Kind = "items"> {
 
 /** Routes to TreeDataArrayChain when V is an array, TreeDataChain otherwise */
 type DataChainFor<D, V, M extends Mode> = V extends readonly unknown[] ? TreeDataArrayChain<D, V, M> : TreeDataChain<D, V, M>;
+
+/** Routes to TreePatherArrayChain when V is an array, TreePatherChain otherwise */
+type PatherChainFor<D, V, M extends Mode> = V extends readonly unknown[] ? TreePatherArrayChain<D, V, M> : TreePatherChain<D, V, M>;
 
 // #endregion
 // #region ─── Predicates ───────────────────────────────────────
@@ -315,6 +358,22 @@ type ValueOperandFor<V, Op extends string> =
 /** Operand type for field-based predicates: resolves field first, then dispatches */
 type OperandFor<T, F extends string, Op extends string> = ValueOperandFor<ResolveField<T, F>, Op>;
 
+/**
+ * Acceptable operand forms for where() value position.
+ * - Literal: direct value (existing behavior)
+ * - Single queryable: Queryable<V, "single", "data"> — computed value from another chain
+ * - Multi queryable: Queryable<E, "multi", "data"> — only for set operators (where V = E[])
+ * - Self-ref sublens: callback returning Queryable<V, "single", "data"> — compare against own fields
+ */
+// prettier-ignore
+type WhereOperand<V, D> =
+    | V                                                                    // literal value
+    | Queryable<V, "single", "data">                                       // single-mode queryable
+    | (V extends readonly (infer E)[]                                      // multi-mode queryable (set ops only)
+        ? (number extends V["length"] ? Queryable<E, "multi", "data"> : never)
+        : never)
+    | ((sub: TreeDataChain<D, D, "single">) => Queryable<V, "single", "data">); // self-ref sublens
+
 // ─── Helpers ──────────────────────────────────────────────────
 
 /** Sort configuration */
@@ -323,61 +382,56 @@ interface SortConfig {
     nullish?: "first" | "last";
 }
 
-/** Data field predicate tuple — distributes over data keys × operators */
-type DataPredTuple<D> = {
-    [F in AllStringKeys<D>]: {
-        [Op in CompOp]: [field: F, op: Op, value: OperandFor<D, F, Op>];
-    }[CompOp];
-}[AllStringKeys<D>];
-
-/** Meta token predicate tuple — distributes over meta tokens × operators */
-type MetaPredTuple = {
-    [F in MetaToken]: {
-        [Op in CompOp]: [field: F, op: Op, value: ValueOperandFor<MetaTokenMap[F], Op>];
-    }[CompOp];
-}[MetaToken];
-
-/** Combined predicate tuple for logic combinators */
-type PredicateTuple<D> = DataPredTuple<D> | MetaPredTuple;
-
 /** Logic expression — opaque token returned by LogicBuilder */
 interface LogicExpr {
     readonly [QueryBrand]: "logic";
 }
 
-/** Builder for combining predicates with AND/OR/XOR */
+/** Builder for combining predicates with AND/OR/XOR — also callable as predicate factory */
 interface LogicBuilder<D> {
-    and(...predicates: (PredicateTuple<D> | LogicExpr)[]): LogicExpr;
-    or(...predicates: (PredicateTuple<D> | LogicExpr)[]): LogicExpr;
-    xor(...predicates: (PredicateTuple<D> | LogicExpr)[]): LogicExpr;
+    /** Predicate factory — bare data key */
+    <F extends AllStringKeys<D>, Op extends CompOp>(field: F, op: Op, value: WhereOperand<OperandFor<D, F, Op>, D>): LogicExpr;
+    /** Predicate factory — meta token */
+    <F extends MetaToken, Op extends CompOp>(field: F, op: Op, value: WhereOperand<ValueOperandFor<MetaTokenMap[F], Op>, D>): LogicExpr;
+    /** Predicate factory — sublens for deep property access */
+    <V, Op extends CompOp>(field: (sub: TreeDataChain<D, D, "single">) => Queryable<V, any, "data">, op: Op, value: WhereOperand<ValueOperandFor<V, Op>, D>): LogicExpr;
+
+    /** Combinators */
+    and(...predicates: LogicExpr[]): LogicExpr;
+    or(...predicates: LogicExpr[]): LogicExpr;
+    xor(...predicates: LogicExpr[]): LogicExpr;
     not: {
-        and(...predicates: (PredicateTuple<D> | LogicExpr)[]): LogicExpr;
-        or(...predicates: (PredicateTuple<D> | LogicExpr)[]): LogicExpr;
-        xor(...predicates: (PredicateTuple<D> | LogicExpr)[]): LogicExpr;
+        and(...predicates: LogicExpr[]): LogicExpr;
+        or(...predicates: LogicExpr[]): LogicExpr;
+        xor(...predicates: LogicExpr[]): LogicExpr;
     };
 }
 
 // #endregion
 // #region ─── Tree Selector (Item Chain) ───────────────────────
 
+/** Resolves to lens, pather, or target item chain based on context */
+type ItemChainFor<D, M extends Mode, C extends ChainContext> = C extends "lens" ? TreeItemChain<D, M> : C extends "pather" ? TreePatherItemChain<D, M> : TreeTargetItemChain<D, M>;
+
 /**
- * Root $ builder for TreeDB.select($ => ...)
- * $ itself represents "all items" — select($ => $) returns everything.
+ * Root base — shared structural entry points, parameterized by ChainContext.
+ * Target roots return TreeTargetItemChain (no data projection).
+ * Lens roots return TreeItemChain (callable for data projection).
  */
-interface TreeLensRoot<D> extends Queryable<TreeItemOf<D>, "multi", "items"> {
-    /** Data projection: $("name") → all items' data.name */
-    <K extends AllStringKeys<D>>(key: K): DataChainFor<D, SafeLookup<D, K>, "multi">;
+interface TreeRootBase<D, C extends ChainContext> extends Queryable<TreeItemOf<D>, "multi", "items"> {
+    /** Direct ID lookup */
+    of(id: string): ItemChainFor<D, "single", C>;
 
     /** Structural entry points */
-    readonly roots: TreeItemChain<D, "multi">;
-    readonly leaves: TreeItemChain<D, "multi">;
-    readonly allWide: TreeItemChain<D, "multi">;
-    readonly allDeep: TreeItemChain<D, "multi">;
+    readonly roots: ItemChainFor<D, "multi", C>;
+    readonly leaves: ItemChainFor<D, "multi", C>;
+    readonly allWide: ItemChainFor<D, "multi", C>;
+    readonly allDeep: ItemChainFor<D, "multi", C>;
 
-    /** Set operations — combine selectors */
-    union(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): TreeItemChain<D, "multi">;
-    intersect(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): TreeItemChain<D, "multi">;
-    exclude(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): TreeItemChain<D, "multi">;
+    /** Set operations */
+    union(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): ItemChainFor<D, "multi", C>;
+    intersect(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): ItemChainFor<D, "multi", C>;
+    exclude(...selectors: Queryable<TreeItemOf<D>, any, "items">[]): ItemChainFor<D, "multi", C>;
 
     /** Structural meta tokens (symbol-typed, collision-free with data keys) */
     readonly ID: typeof META_ID;
@@ -387,47 +441,120 @@ interface TreeLensRoot<D> extends Queryable<TreeItemOf<D>, "multi", "items"> {
 }
 
 /**
- * Selector chain — operates on tree items.
- * Structural navigation, filtering, narrowing, and data projection.
- *
- * Multi-mode only methods return `never` in single mode.
+ * Targetter root — no data projection ($("field")).
+ * Used by pluck, splice, prune, trim, move.
  */
-interface TreeItemChain<D, M extends Mode> extends Queryable<TreeItemOf<D>, M, "items"> {
-    /** Project to data property — routes to array or scalar chain based on D[K] */
-    <K extends AllStringKeys<D>>(key: K): DataChainFor<D, SafeLookup<D, K>, M>;
+interface TreeTargetRoot<D> extends TreeRootBase<D, "target"> {}
 
+/**
+ * Lens root — adds data projection ($("name") → data chain).
+ * Used by select (full query + projection capabilities).
+ */
+interface TreeLensRoot<D> extends TreeRootBase<D, "lens"> {
+    /** Data projection: $("name") → all items' data.name */
+    <K extends AllStringKeys<D>>(key: K): DataChainFor<D, SafeLookup<D, K>, "multi">;
+}
+
+/**
+ * Update root — adds data path navigation ($("name") → pather chain).
+ * Like lens root but ("key") returns pather chains (pure navigation, no where/sort/slice).
+ * Used by update.
+ */
+interface TreeUpdateRoot<D> extends TreeRootBase<D, "pather"> {
+    /** Data path: $("name") → navigates into data.name (write-back safe) */
+    <K extends AllStringKeys<D>>(key: K): PatherChainFor<D, SafeLookup<D, K>, "multi">;
+}
+
+/**
+ * Base item chain — shared by lens and target contexts.
+ * Parameterized by ChainContext C: all methods return ItemChainFor<D, ?, C>.
+ * Call signature NOT included — added by TreeItemChain (lens) only.
+ */
+interface TreeItemChainBase<D, M extends Mode, C extends ChainContext> extends Queryable<TreeItemOf<D>, M, "items"> {
     /** Filter — ID equality auto-narrows to single (IDs are unique) */
-    where(field: typeof META_ID, op: "=", value: string): TreeItemChain<D, "single">;
+    where(field: typeof META_ID, op: "=", value: WhereOperand<string, D>): ItemChainFor<D, "single", C>;
     /** Filter — meta token predicate (structural fields) */
-    where<F extends MetaToken, Op extends CompOp>(field: F, op: Op, value: ValueOperandFor<MetaTokenMap[F], Op>): TreeItemChain<D, M>;
+    where<F extends MetaToken, Op extends CompOp>(field: F, op: Op, value: WhereOperand<ValueOperandFor<MetaTokenMap[F], Op>, D>): ItemChainFor<D, M, C>;
     /** Filter — sublens predicate for deep property access in where() */
-    where<V, Op extends CompOp>(field: (sub: TreeDataChain<D, D, "single">) => Queryable<V, any, "data">, op: Op, value: ValueOperandFor<V, Op>): TreeItemChain<D, M>;
+    where<V, Op extends CompOp>(field: (sub: TreeDataChain<D, D, "single">) => Queryable<V, any, "data">, op: Op, value: WhereOperand<ValueOperandFor<V, Op>, D>): ItemChainFor<D, M, C>;
     /** Filter — logic combinator (OR, AND, XOR) */
-    where(logic: (l: LogicBuilder<D>) => LogicExpr): TreeItemChain<D, M>;
+    where(logic: (l: LogicBuilder<D>) => LogicExpr): ItemChainFor<D, M, C>;
     /** Filter — general data field predicate (chained .where().where() = implicit AND) */
-    where<F extends AllStringKeys<D>, Op extends CompOp>(field: F, op: Op, value: OperandFor<D, F, Op>): TreeItemChain<D, M>;
+    where<F extends AllStringKeys<D>, Op extends CompOp>(field: F, op: Op, value: WhereOperand<OperandFor<D, F, Op>, D>): ItemChainFor<D, M, C>;
+
+    /** Narrow to single by ID */
+    of(id: string): ItemChainFor<D, "single", C>;
 
     /** Narrow to single (multi-mode only) */
-    first(): M extends "multi" ? TreeItemChain<D, "single"> : never;
-    last(): M extends "multi" ? TreeItemChain<D, "single"> : never;
-    at(index: number): M extends "multi" ? TreeItemChain<D, "single"> : never;
+    first(): M extends "multi" ? ItemChainFor<D, "single", C> : never;
+    last(): M extends "multi" ? ItemChainFor<D, "single", C> : never;
+    at(index: number): M extends "multi" ? ItemChainFor<D, "single", C> : never;
 
     /** Collection operations (multi-mode only) */
-    sort(field: AllStringKeys<D> | MetaToken, config?: SortConfig): M extends "multi" ? TreeItemChain<D, "multi"> : never;
-    distinct(field?: AllStringKeys<D> | MetaToken): M extends "multi" ? TreeItemChain<D, "multi"> : never;
-    slice(start: number, end?: number): M extends "multi" ? TreeItemChain<D, "multi"> : never;
+    sort(field: AllStringKeys<D> | MetaToken, config?: SortConfig): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
+    distinct(field?: AllStringKeys<D> | MetaToken): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
+    slice(start: number, end?: number): M extends "multi" ? ItemChainFor<D, "multi", C> : never;
 
     /** Structural traversal */
-    readonly children: TreeItemChain<D, "multi">;
-    readonly parent: TreeItemChain<D, M>;
-    readonly ancestors: TreeItemChain<D, "multi">;
-    readonly wideDescendants: TreeItemChain<D, "multi">;
-    readonly deepDescendants: TreeItemChain<D, "multi">;
-    readonly siblings: TreeItemChain<D, "multi">;
+    readonly children: ItemChainFor<D, "multi", C>;
+    readonly parent: ItemChainFor<D, M, C>;
+    readonly ancestors: ItemChainFor<D, "multi", C>;
+    readonly wideDescendants: ItemChainFor<D, "multi", C>;
+    readonly deepDescendants: ItemChainFor<D, "multi", C>;
+    readonly siblings: ItemChainFor<D, "multi", C>;
+
+    /** Projection terminals — project structural metadata as data values */
+    readonly ID: Queryable<string, M, "data">;
+    readonly PARENT: Queryable<string | null, M, "data">;
+    readonly CHILDREN: Queryable<string[], M, "data">;
+    readonly DEPTH: Queryable<number, M, "data">;
 
     /** Terminals */
     count(): M extends "multi" ? Queryable<number, "single", "data"> : never;
     exists(): Queryable<boolean, "single", "data">;
+}
+
+/** Target item chain — structural navigation only, no data projection call signature */
+interface TreeTargetItemChain<D, M extends Mode> extends TreeItemChainBase<D, M, "target"> {}
+
+/**
+ * Lens item chain — extends base with data projection call signature.
+ * Structural navigation + filtering + narrowing + data projection.
+ */
+interface TreeItemChain<D, M extends Mode> extends TreeItemChainBase<D, M, "lens"> {
+    /** Project to data property — routes to array or scalar chain based on D[K] */
+    <K extends AllStringKeys<D>>(key: K): DataChainFor<D, SafeLookup<D, K>, M>;
+}
+
+/** Pather item chain — extends base with data path call signature returning pather chains */
+interface TreePatherItemChain<D, M extends Mode> extends TreeItemChainBase<D, M, "pather"> {
+    /** Navigate to data property — returns pather chain (pure navigation, no where/sort/slice) */
+    <K extends AllStringKeys<D>>(key: K): PatherChainFor<D, SafeLookup<D, K>, M>;
+}
+
+// #endregion
+// #region ─── Tree Pather (Navigation-Only Chains) ─────────────
+
+/**
+ * Pather chain for scalar values — pure navigation, no filtering.
+ * After $("address")("city") in update context.
+ * Only (key) drilling — no where, sort, slice, distinct, count, size.
+ */
+interface TreePatherChain<D, V, M extends Mode> extends Queryable<V, M, "data"> {
+    /** Drill into nested properties */
+    <K extends AllStringKeys<V>>(key: K): PatherChainFor<D, SafeLookup<V, K>, M>;
+}
+
+/**
+ * Pather chain for array values — index and wildcard only.
+ * After $("roles") in update context.
+ * No element filtering, sorting, slicing — just positional access.
+ */
+interface TreePatherArrayChain<D, V extends readonly unknown[], M extends Mode> extends Queryable<V, M, "data"> {
+    /** Index access: ("roles")(0) → targets element at index */
+    (index: number): PatherChainFor<D, V[number], M>;
+    /** Wildcard: ("roles")("*") → targets all elements */
+    <W extends "*">(wildcard: W): PatherChainFor<D, V[number], "multi">;
 }
 
 // #endregion
@@ -446,15 +573,15 @@ interface TreeDataChain<D, V, M extends Mode> extends Queryable<V, M, "data"> {
     <K extends AllStringKeys<V>>(key: K): DataChainFor<D, SafeLookup<V, K>, M>;
 
     /** Filter — ID equality auto-narrows to single */
-    where(field: typeof META_ID, op: "=", value: string): TreeDataChain<D, V, "single">;
+    where(field: typeof META_ID, op: "=", value: WhereOperand<string, D>): TreeDataChain<D, V, "single">;
     /** Filter — meta token predicate */
-    where<F extends MetaToken, Op extends CompOp>(field: F, op: Op, value: ValueOperandFor<MetaTokenMap[F], Op>): TreeDataChain<D, V, M>;
+    where<F extends MetaToken, Op extends CompOp>(field: F, op: Op, value: WhereOperand<ValueOperandFor<MetaTokenMap[F], Op>, D>): TreeDataChain<D, V, M>;
     /** Filter — sublens predicate */
-    where<SV, Op extends CompOp>(field: (sub: TreeDataChain<D, D, "single">) => Queryable<SV, any, "data">, op: Op, value: ValueOperandFor<SV, Op>): TreeDataChain<D, V, M>;
+    where<SV, Op extends CompOp>(field: (sub: TreeDataChain<D, D, "single">) => Queryable<SV, any, "data">, op: Op, value: WhereOperand<ValueOperandFor<SV, Op>, D>): TreeDataChain<D, V, M>;
     /** Filter — logic combinator */
     where(logic: (l: LogicBuilder<D>) => LogicExpr): TreeDataChain<D, V, M>;
     /** Filter — general data field predicate */
-    where<F extends AllStringKeys<D>, Op extends CompOp>(field: F, op: Op, value: OperandFor<D, F, Op>): TreeDataChain<D, V, M>;
+    where<F extends AllStringKeys<D>, Op extends CompOp>(field: F, op: Op, value: WhereOperand<OperandFor<D, F, Op>, D>): TreeDataChain<D, V, M>;
 
     /** Count items contributing values (multi-mode only) */
     count(): M extends "multi" ? Queryable<number, "single", "data"> : never;
@@ -484,7 +611,15 @@ interface TreeDataArrayChain<D, V extends readonly unknown[], M extends Mode> ex
     at(index: number): DataChainFor<D, V[number], M>;
 
     /** Element filtering — predicate targets array elements, not tree items */
-    where<F extends ElementPredField<V[number]>, Op extends CompOp>(field: F, op: Op, value: OperandFor<V[number], F, Op>): TreeDataArrayChain<D, V, M>;
+    where<F extends ElementPredField<V[number]>, Op extends CompOp>(field: F, op: Op, value: WhereOperand<OperandFor<V[number], F, Op>, V[number]>): TreeDataArrayChain<D, V, M>;
+    /** Element filtering — sublens predicate for deep element property access */
+    where<SV, Op extends CompOp>(
+        field: (sub: TreeDataChain<V[number], V[number], "single">) => Queryable<SV, any, "data">,
+        op: Op,
+        value: WhereOperand<ValueOperandFor<SV, Op>, V[number]>,
+    ): TreeDataArrayChain<D, V, M>;
+    /** Element filtering — logic combinator */
+    where(logic: (l: LogicBuilder<V[number]>) => LogicExpr): TreeDataArrayChain<D, V, M>;
 
     /** Element collection ops */
     sort(field: ElementPredField<V[number]>, config?: SortConfig): TreeDataArrayChain<D, V, M>;
@@ -503,16 +638,11 @@ type SelectResult<T, M extends Mode> = M extends "single" ? T : T[];
 /** select() — accepts both selectors (items) and lenses (data) */
 type TreeSelect<D> = <T, M extends Mode, K extends Kind>(builder: ($: TreeLensRoot<D>) => Queryable<T, M, K>) => SelectResult<T, M>;
 
-/** update() — Kind determines updater type */
-type TreeUpdate<D> = {
-    /** Lens update: updater targets the projected property type V */
-    <V, M extends Mode>(query: ($: TreeLensRoot<D>) => Queryable<V, M, "data">, updater: Updater<V, TreeItemOf<D>>): void;
-    /** Selector update: updater targets the whole data D */
-    <M extends Mode>(query: ($: TreeLensRoot<D>) => Queryable<TreeItemOf<D>, M, "items">, updater: Updater<D, TreeItemOf<D>>): void;
-};
+/** update() — uses TreeUpdateRoot: item targeting + pather navigation (no where/sort/slice on data) */
+type TreeUpdate<D> = <V, M extends Mode, K extends Kind>(query: ($: TreeUpdateRoot<D>) => Queryable<V, M, K>, updater: Updater<K extends "items" ? D : V, TreeItemOf<D>>) => void;
 
-/** pluck/splice/prune/trim — selectors only (Kind must be "items") */
-type TreePluck<D> = <M extends Mode>(query: ($: TreeLensRoot<D>) => Queryable<TreeItemOf<D>, M, "items">) => void;
+/** pluck/splice/prune/trim — targetter only (Kind must be "items") */
+type TreePluck<D> = <M extends Mode>(query: ($: TreeTargetRoot<D>) => Queryable<TreeItemOf<D>, M, "items">) => void;
 
 // #endregion
 // #region ─── Usage Tests ──────────────────────────────────────
@@ -588,7 +718,7 @@ const d3 = treeSelect(
 const d4 = treeSelect(($) => $.roots.where((sub) => sub("address")("city"), "=", "NYC"));
 
 // ── Logic combinators ──
-const d5 = treeSelect(($) => $.roots.where((l) => l.or(["age", ">", 18], ["status", "=", "admin"])));
+const d5 = treeSelect(($) => $.roots.where((l) => l.or(l("age", ">", 18), l("status", "=", "admin"))));
 
 // ── Collection operations ──
 const g1 = treeSelect(($) => $.roots.sort("age", { direction: "desc" }));
@@ -637,9 +767,9 @@ const f7 = treeSelect(($) => $.roots.where("name", "=|", "Alice"));
 const f8 = treeSelect(($) => $.roots.where("age", "?|", [1, 2]));
 
 // ── Typed logic combinator predicates ──
-const e9 = treeSelect(($) => $.roots.where((l) => l.or(["age", ">", 18], ["name", "=", "Bob"])));
+const e9 = treeSelect(($) => $.roots.where((l) => l.or(l("age", ">", 18), l("name", "=", "Bob"))));
 // @ts-expect-error — ✗ string not assignable to number (age requires number for >)
-const f4 = treeSelect(($) => $.roots.where((l) => l.and(["age", ">", "old"])));
+const f4 = treeSelect(($) => $.roots.where((l) => l.and(l("age", ">", "old"))));
 
 // ── Meta token predicates ──
 const m1 = treeSelect(($) => $.roots.where($.DEPTH, ">", 3)); // ✓ depth > 3
@@ -656,6 +786,38 @@ const n3 = treeSelect(($) => $.roots.where("address", "#>", 1)); // ✓ address 
 
 // @ts-expect-error — ✗ number is not sizable (age is number, #> needs string/array/object)
 const n4 = treeSelect(($) => $.roots.where("age", "#>", 5));
+
+// ── Cross-reference queryable operands (pattern 2) ──
+const q1 = treeSelect(($) => $.roots.where($.ID, "=|", $.allDeep("roles")("*"))); // ID in any item's roles
+const q2 = treeSelect(($) => $.allDeep.where("roles", "?|", $.roots("roles")("*"))); // roles overlap with root roles
+const q3 = treeSelect(($) => $.roots.where("age", "=", $.allDeep.first().DEPTH)); // age equals first item's depth
+
+// ── Self-referencing sublens operands (pattern 3) ──
+const q4 = treeSelect(($) => $.allDeep.where("roles", "#>", (_) => _("age"))); // more roles than age
+const q5 = treeSelect(($) => $.allDeep.where("name", "=|", (_) => _("roles"))); // name in own roles
+
+// ── .of() narrowing ──
+const q6 = treeSelect(($) => $.allDeep.of("abc123")); // TreeItemOf<Sample> (single)
+const q7 = treeSelect(($) => $.allDeep.of("abc123")("name")); // string (single)
+const q8 = treeSelect(($) => $.roots.of("xyz").DEPTH); // number (single)
+
+// ── Projection terminals ──
+const q9 = treeSelect(($) => $.roots.ID); // string[]
+const q10 = treeSelect(($) => $.roots.CHILDREN); // string[][]
+const q11 = treeSelect(($) => $.roots.first().DEPTH); // number
+const q12 = treeSelect(($) => $.roots.first().PARENT); // string | null
+
+// @ts-expect-error — ✗ multi queryable with scalar operator (> needs single-mode operand)
+const qe1 = treeSelect(($) => $.roots.where("age", ">", $.allDeep.DEPTH));
+
+// ── Array element where() — logic combinator (RQ2) ──
+const r1 = treeSelect(($) => $("tags").where((l) => l.or(l("priority", ">", 5), l("label", "=", "urgent"))));
+
+// ── Array element where() — cross-reference queryable operand (RQ6) ──
+const r2 = treeSelect(($) => $("tags").where("priority", ">", $.roots.first().DEPTH));
+
+// ── Array element where() — self-ref sublens references the element ──
+const r3 = treeSelect(($) => $("tags").where((sub) => sub("label").size(), ">", 3)); // tags whose label length > 3
 
 // ── .size() — value measurement (projection terminal, still useful) ──
 const s1 = treeSelect(($) => $("roles").size()); // ✓ number[] — array element count per item
@@ -674,8 +836,14 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 // #endregion
 // #region ─── Design Decisions ─────────────────────────────────
 
-// D1: Selector = "which items?" — Lens = "what property?"
-//     A selector's .where() can use a lens as a predicate (sublens predicates).
+// D1: Three-tier query hierarchy: Targetter ⊂ Pather ⊂ Lens.
+//     Targetter = "which items?" — no data projection. Used by pluck/splice/prune/trim/move.
+//     Pather = Targetter + pure field navigation ($("key") chaining). Used by update.
+//       ("key") returns TreePatherChain (navigation only, no where/sort/slice/distinct).
+//       Ensures the path is always a valid write-back target.
+//     Lens = full query + data chains with where/sort/slice/project. Used by select.
+//       ("key") returns TreeDataChain (full filtering and reshaping capabilities).
+//     TreeTargetRoot / TreeUpdateRoot / TreeLensRoot.
 
 // D2: Two data chain types: TreeDataChain (scalar V) and TreeDataArrayChain (array V)
 //     DataChainFor<D,V,M> routes automatically based on whether V is an array.
@@ -694,6 +862,9 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 // D8: $.ID equality auto-narrows to single mode via where overload.
 
 // D9: Logic combinators via .where(l => l.or(...)). Chained .where().where() = implicit AND.
+//     LogicBuilder is callable as a predicate factory: l("age", ">", 18) → LogicExpr.
+//     Supports bare keys, meta tokens, and sublens callbacks in the field position.
+//     Combinators (and/or/xor) take LogicExpr, not tuples — each predicate is independently type-checked.
 
 // D10: Typed operand enforcement via ResolveField + OperandFor.
 //      Invalid combos resolve to never, preventing misuse at compile time.
@@ -721,21 +892,62 @@ const s9 = treeSelect(($) => $("age").size()); // never[]
 // D16: Discriminated union support — AllStringKeys<D> + SafeLookup<D, K> distribute over union members.
 //      All variant keys are accessible; resolution yields the union of types from variants that have the key.
 
+// D17: Where operand forms — three value patterns in where():
+//      1. Literal value (existing) — direct value matching field + operator type
+//      2. Cross-reference queryable — Queryable as computed operand from another chain
+//         Single-mode queryable: any operator. Multi-mode: set operators only (=|, ?|, ?&, etc.)
+//      3. Self-referencing sublens — callback (sub => sub("field")) comparing against own fields
+//      WhereOperand<V, D> unifies all three forms. Tuple guard prevents multi queryable for range ops.
+
+// D18: Projection terminals — .ID, .PARENT, .CHILDREN, .DEPTH on TreeItemChain.
+//      Project structural metadata as Queryable<T, M, "data">.
+//      $.ID (on root) = meta token symbol for where() field position.
+//      $.roots.ID (on item chain) = projection terminal for operand/output use.
+
+// D19: .of(id) — narrows item chain to single by ID. Sugar for where($.ID, "=", id).
+//      Works on any mode (single or multi). No mode gating.
+
+// D20: TreeDataArrayChain.where() — full where() capability for array elements.
+//      Logic combinator: where(l => l.or(...)). Sublens field: where(sub => sub("label").size(), ...).
+//      WhereOperand: accepts queryable/sublens operands. Self-ref sublens references the ELEMENT, not the parent item.
+//      If parent-item filtering is needed, do it before projecting into the array.
+
+// D21: ChainContext parameterization — "lens" | "target" | "pather" flows through TreeItemChainBase and TreeRootBase.
+//      TreeTargetItemChain: no call signature — data projection not available in pluck/splice contexts.
+//      TreePatherItemChain: (key: K) returns PatherChainFor (pure navigation, write-back safe).
+//      TreeItemChain: (key: K) returns DataChainFor (full lens capabilities).
+//      ItemChainFor<D, M, C> conditional type routes: lens → TreeItemChain, pather → TreePatherItemChain, target → TreeTargetItemChain.
+//      Zero duplication: all shared methods (where, of, first, children, etc.) defined once in TreeItemChainBase.
+
+// D22: TreeUpdate uses TreeUpdateRoot — single-signature with K extends "items" ? D : V conditional.
+//      TreeUpdateRoot extends TreeRootBase<D, "pather">: item targeting with full where/structural nav,
+//      but ("key") enters pather mode (TreePatherChain) — no where/sort/slice on the data path.
+//      Ensures all update paths are unambiguous write-back targets.
+//      When query returns items (K="items"), updater gets Updater<D, ...> (prev = payload).
+//      When query returns data (K="data"), updater gets Updater<V, ...> (prev = projected value).
+
+// D23: Pather chains — TreePatherChain (scalar) and TreePatherArrayChain (array).
+//      PatherChainFor<D, V, M> routes to array or scalar pather, mirroring DataChainFor.
+//      Scalar pather: only (key: K) drilling into nested properties.
+//      Array pather: only (index: number) and ("*") wildcard — no where/sort/slice/distinct/first/last.
+//      Array surgery (filtering, reordering) belongs in the updater callback, not the path.
+
 // #endregion
 // #region ─── Remaining Questions ──────────────────────────────
 
 // RQ1: RESOLVED → D11. ? for contains, # for numerify. ~86 enumerated operators.
 
-// RQ2: Should TreeDataArrayChain.where() support sublens and logic builder overloads?
-//      Currently only has element-level field predicates.
+// RQ2: RESOLVED → D20. TreeDataArrayChain.where() now supports sublens and logic builder overloads.
 
-// RQ3: How should nested arrays work? e.g., D = { matrix: number[][] }
-//      $("matrix")(0) → number[] → TreeDataArrayChain again. Seems to work naturally.
+// RQ3: RESOLVED. Nested arrays work naturally — each ("*") peels one layer.
+//      $("matrix")("*")("*") flattens number[][] → number. Index access chains similarly.
 
 // RQ4: RESOLVED → D13. .count() = query cardinality. .size() = value measurement.
 //      # numerify operators subsume sublens .size() for where() predicates.
 
 // RQ5: Set operations — should $.union/intersect/exclude accept lenses too?
 //      Deferred. Currently typed for items only.
+
+// RQ6: RESOLVED → D20. TreeDataArrayChain.where() now accepts WhereOperand.
 
 // #endregion
