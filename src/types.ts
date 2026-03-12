@@ -37,3 +37,19 @@ export type GraphLinkOf<L> = { id: GraphLinkId; from: GraphNodeId; to: GraphNode
 export type SocketedGraphOf<N, L> = { nodes: { [id: GraphNodeId]: SocketedGraphNodeOf<N> }; links: { [id: GraphLinkId]: SocketedGraphLinkOf<L> } };
 export type SocketedGraphNodeOf<N> = { id: GraphNodeId; in: { [key: GraphSocketId]: GraphLinkId[] }; out: { [key: GraphSocketId]: GraphLinkId[] }; data: N };
 export type SocketedGraphLinkOf<L> = { id: GraphLinkId; fromNode: GraphNodeId; toNode: GraphNodeId; fromSocket: GraphSocketId; toSocket: GraphSocketId; data: L };
+
+export const Compare = Symbol();
+export const Equals = Symbol();
+export const TypeOf = Symbol();
+
+export interface Comparable {
+    [Compare]: (other: unknown) => number; // -1, 0, 1
+}
+
+export interface Equatable {
+    [Equals]: (other: unknown) => boolean;
+}
+
+export interface Typeable {
+    [TypeOf]: () => string;
+}
