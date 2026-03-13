@@ -1,5 +1,29 @@
 import { GetterLens, GetterLensOf, QueryLens, QueryLensOf } from "./types";
-import { Compare, Equals, TypeOf, LensSubQuery, LensSubAccess } from "../../types";
+import { Compare, Equals, TypeOf, LensSubQuery, LensSubAccess, LensQuery, LensAccess } from "../../types";
+
+//#region - Public API
+
+export namespace Lens {
+    export const query = <D, R>(data: D, lens: ($: QueryLens<D>) => QueryLensOf<R>): R => {
+        const proxy = createProxy({ value: data, isEach: false });
+        const result = lens(proxy);
+        return (result as any)[LENS].value;
+    };
+    export const get = <D, R>(data: D, lens: ($: GetterLens<D>) => GetterLensOf<R>): R => {
+        const proxy = createProxy({ value: data, isEach: false });
+        const result = lens(proxy as any);
+        return (result as any)[LENS].value;
+    };
+    /*
+    todo: after we solidify what MutateLens and ApplyLens is like
+    const mutate = <D, R>(data: D, lens: ($: UpdaterLens<D>) => UpdaterLens<R>, value: R | ((prev: R) => R)): void => {};
+    const apply = <D, R>(data: D, lens: ($: UpdaterLens<D>) => UpdaterLens<R>, value: R | ((prev: readonly R) => R)): D => { // note: readonly R probably needs to be deeply-nested readonly somehow?
+        return {} as any;
+    };
+    */
+}
+
+//#endregion
 
 //#region - Symbols
 
@@ -86,10 +110,13 @@ function resolveTypeOf(value: unknown): string {
 function convertToString(value: unknown): string | null {
     if (value === null || value === undefined) return null;
     switch (typeof value) {
-        case "string": return value;
+        case "string":
+            return value;
         case "number":
-        case "bigint": return value.toString();
-        case "boolean": return null;
+        case "bigint":
+            return value.toString();
+        case "boolean":
+            return null;
     }
     if (Array.isArray(value)) return null;
     if (typeof (value as any).toString === "function" && (value as any).toString !== Object.prototype.toString) {
@@ -119,21 +146,79 @@ function sortCompare(a: unknown, b: unknown): number {
 const OPS: Record<string, (subject: any, operand: any, operand2?: any) => boolean> = {
     "=": (s, o) => performEquality(s, o),
     "==": (s, o) => s == o,
-    ">": (s, o) => { const c = compare(s, o); return c !== null && c > 0; },
-    "<": (s, o) => { const c = compare(s, o); return c !== null && c < 0; },
-    ">=": (s, o) => { const c = compare(s, o); return c !== null && c >= 0; },
-    "<=": (s, o) => { const c = compare(s, o); return c !== null && c <= 0; },
-    "%": (s, o) => { const a = convertToString(s), b = convertToString(o); return a !== null && b !== null && a.includes(b); },
-    "%^": (s, o) => { const a = convertToString(s), b = convertToString(o); return a !== null && b !== null && a.toLowerCase().includes(b.toLowerCase()); },
-    "%_": (s, o) => { const a = convertToString(s), b = convertToString(o); return a !== null && b !== null && a.startsWith(b); },
-    "%^_": (s, o) => { const a = convertToString(s), b = convertToString(o); return a !== null && b !== null && a.toLowerCase().startsWith(b.toLowerCase()); },
-    "_%": (s, o) => { const a = convertToString(s), b = convertToString(o); return a !== null && b !== null && a.endsWith(b); },
-    "_%^": (s, o) => { const a = convertToString(s), b = convertToString(o); return a !== null && b !== null && a.toLowerCase().endsWith(b.toLowerCase()); },
-    "~": (s, o) => { const str = convertToString(s); if (str === null) return false; try { return (o instanceof RegExp ? o : new RegExp(o)).test(str); } catch { return false; } },
+    ">": (s, o) => {
+        const c = compare(s, o);
+        return c !== null && c > 0;
+    },
+    "<": (s, o) => {
+        const c = compare(s, o);
+        return c !== null && c < 0;
+    },
+    ">=": (s, o) => {
+        const c = compare(s, o);
+        return c !== null && c >= 0;
+    },
+    "<=": (s, o) => {
+        const c = compare(s, o);
+        return c !== null && c <= 0;
+    },
+    "%": (s, o) => {
+        const a = convertToString(s),
+            b = convertToString(o);
+        return a !== null && b !== null && a.includes(b);
+    },
+    "%^": (s, o) => {
+        const a = convertToString(s),
+            b = convertToString(o);
+        return a !== null && b !== null && a.toLowerCase().includes(b.toLowerCase());
+    },
+    "%_": (s, o) => {
+        const a = convertToString(s),
+            b = convertToString(o);
+        return a !== null && b !== null && a.startsWith(b);
+    },
+    "%^_": (s, o) => {
+        const a = convertToString(s),
+            b = convertToString(o);
+        return a !== null && b !== null && a.toLowerCase().startsWith(b.toLowerCase());
+    },
+    "_%": (s, o) => {
+        const a = convertToString(s),
+            b = convertToString(o);
+        return a !== null && b !== null && a.endsWith(b);
+    },
+    "_%^": (s, o) => {
+        const a = convertToString(s),
+            b = convertToString(o);
+        return a !== null && b !== null && a.toLowerCase().endsWith(b.toLowerCase());
+    },
+    "~": (s, o) => {
+        const str = convertToString(s);
+        if (str === null) return false;
+        try {
+            return (o instanceof RegExp ? o : new RegExp(o)).test(str);
+        } catch {
+            return false;
+        }
+    },
     "#": (s, o) => Array.isArray(s) && s.includes(o),
     ":": (s, o) => resolveTypeOf(s).startsWith(String(o)),
-    "><": (s, lo, hi) => { const ord = compare(lo, hi); if (ord === null) return false; const [l, h] = ord <= 0 ? [lo, hi] : [hi, lo]; const cL = compare(s, l); const cH = compare(s, h); return cL !== null && cH !== null && cL > 0 && cH < 0; },
-    ">=<": (s, lo, hi) => { const ord = compare(lo, hi); if (ord === null) return false; const [l, h] = ord <= 0 ? [lo, hi] : [hi, lo]; const cL = compare(s, l); const cH = compare(s, h); return cL !== null && cH !== null && cL >= 0 && cH <= 0; },
+    "><": (s, lo, hi) => {
+        const ord = compare(lo, hi);
+        if (ord === null) return false;
+        const [l, h] = ord <= 0 ? [lo, hi] : [hi, lo];
+        const cL = compare(s, l);
+        const cH = compare(s, h);
+        return cL !== null && cH !== null && cL > 0 && cH < 0;
+    },
+    ">=<": (s, lo, hi) => {
+        const ord = compare(lo, hi);
+        if (ord === null) return false;
+        const [l, h] = ord <= 0 ? [lo, hi] : [hi, lo];
+        const cL = compare(s, l);
+        const cH = compare(s, h);
+        return cL !== null && cH !== null && cL >= 0 && cH <= 0;
+    },
 };
 
 //#endregion
@@ -290,8 +375,8 @@ function createProxy(state: LensState): any {
                             }
                             // Accessor + direction/config overload
                             const [accessor, dirOrConfig] = args;
-                            const dir = typeof dirOrConfig === "string" ? dirOrConfig : dirOrConfig?.direction ?? "asc";
-                            const nullish = typeof dirOrConfig === "object" ? dirOrConfig?.nullish ?? "last" : "last";
+                            const dir = typeof dirOrConfig === "string" ? dirOrConfig : (dirOrConfig?.direction ?? "asc");
+                            const nullish = typeof dirOrConfig === "object" ? (dirOrConfig?.nullish ?? "last") : "last";
 
                             // Extract sort keys once, then sort with stable tiebreaker
                             const keyed = arr.map((item, i) => ({ item, key: Lens.get(item, accessor as any), idx: i }));
@@ -332,19 +417,34 @@ function createProxy(state: LensState): any {
                 //#endregion
             }
 
-            //#region - Custom accessor dispatch (LensSubQuery / LensSubAccess)
+            //#region - Custom accessor dispatch
             if (typeof prop === "string") {
-                const dispatch = (v: any): ((key: any) => unknown) | undefined => {
+                // Keyed (LensSubQuery / LensSubAccess)
+                const keyedDispatch = (v: any): ((key: any) => unknown) | undefined => {
                     const sub = v?.[LensSubQuery]?.[prop] ?? v?.[LensSubAccess]?.[prop];
                     return typeof sub === "function" ? sub : undefined;
                 };
 
                 if (isEach) {
-                    const hasAny = (value as any[]).some((v) => dispatch(v));
-                    if (hasAny) return (key: any) => createProxy({ value: (value as any[]).map((v) => dispatch(v)?.(key)), isEach: true });
+                    const hasAny = (value as any[]).some((v) => keyedDispatch(v));
+                    if (hasAny) return (key: any) => createProxy({ value: (value as any[]).map((v) => keyedDispatch(v)?.(key)), isEach: true });
                 } else {
-                    const fn = dispatch(value);
+                    const fn = keyedDispatch(value);
                     if (fn) return (key: any) => apply(() => fn(key));
+                }
+
+                // Named property (LensQuery / LensAccess)
+                const namedDispatch = (v: any): (() => unknown) | undefined => {
+                    const sub = v?.[LensQuery]?.[prop] ?? v?.[LensAccess]?.[prop];
+                    return typeof sub === "function" ? sub : undefined;
+                };
+
+                if (isEach) {
+                    const hasAny = (value as any[]).some((v) => namedDispatch(v));
+                    if (hasAny) return () => createProxy({ value: (value as any[]).map((v) => namedDispatch(v)?.()), isEach: true });
+                } else {
+                    const fn = namedDispatch(value);
+                    if (fn) return () => apply(() => fn());
                 }
             }
             //#endregion
@@ -354,30 +454,6 @@ function createProxy(state: LensState): any {
     };
 
     return new Proxy(function () {}, handler);
-}
-
-//#endregion
-
-//#region - Public API
-
-export namespace Lens {
-    export const query = <D, R>(data: D, lens: ($: QueryLens<D>) => QueryLensOf<R>): R => {
-        const proxy = createProxy({ value: data, isEach: false });
-        const result = lens(proxy);
-        return (result as any)[LENS].value;
-    };
-    export const get = <D, R>(data: D, lens: ($: GetterLens<D>) => GetterLensOf<R>): R => {
-        const proxy = createProxy({ value: data, isEach: false });
-        const result = lens(proxy as any);
-        return (result as any)[LENS].value;
-    };
-    /*
-    todo: after we solidify what MutateLens and ApplyLens is like
-    const mutate = <D, R>(data: D, lens: ($: GetterLens<D>) => GetterLens<R>, value: R | ((prev: R) => R)): void => {};
-    const apply = <D, R>(data: D, lens: ($: GetterLens<D>) => GetterLens<R>, value: R | ((prev: R) => R)): D => {
-        return {} as any;
-    };
-    */
 }
 
 //#endregion

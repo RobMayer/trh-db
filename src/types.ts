@@ -49,8 +49,19 @@ export type SocketedGraphLinkOf<L> = { id: GraphLinkId; fromNode: GraphNodeId; t
 export const Compare = Symbol();
 export const Equals = Symbol();
 export const TypeOf = Symbol();
+
+export const LensAccess = Symbol();
 export const LensSubAccess = Symbol();
+
+export const LensQuery = Symbol();
 export const LensSubQuery = Symbol();
+
+export const LensMutate = Symbol();
+export const LensSubMutate = Symbol();
+
+export const LensApply = Symbol();
+export const LensSubApply = Symbol();
+
 export const Setter = Symbol();
 
 export interface Comparable {
@@ -65,6 +76,8 @@ export interface Typeable {
     [TypeOf]: () => string;
 }
 
+// sub-records
+
 export interface LensSubAccessible<T extends { [method: string]: [any, any] }> {
     [LensSubAccess]: {
         [M in keyof T]: (key: T[M][0]) => T[M][1];
@@ -74,5 +87,43 @@ export interface LensSubAccessible<T extends { [method: string]: [any, any] }> {
 export interface LensSubQueryable<T extends { [method: string]: [any, any] }> {
     [LensSubQuery]: {
         [M in keyof T]: (key: T[M][0]) => T[M][1];
+    };
+}
+
+export interface LensSubMutable<T extends { [method: string]: [any, any] }> extends LensSubAccessible<T> {
+    [LensSubMutate]: {
+        [M in keyof T]: (key: T[M][0], value: T[M][1]) => void;
+    };
+}
+
+export interface LensSubApplicable<T extends { [method: string]: [any, any] }> extends LensSubAccessible<T> {
+    [LensSubApply]: {
+        [M in keyof T]: (key: T[M][0], value: T[M][1]) => this;
+    };
+}
+
+// property
+
+export interface LensQueryable<T extends { [method: string]: any }> {
+    [LensQuery]: {
+        [M in keyof T]: () => T[M];
+    };
+}
+
+export interface LensAccessible<T extends { [method: string]: any }> {
+    [LensAccess]: {
+        [M in keyof T]: () => T[M];
+    };
+}
+
+export interface LensApplicable<T extends { [method: string]: any }> extends LensAccessible<T> {
+    [LensApply]: {
+        [M in keyof T]: (value: T[M]) => this;
+    };
+}
+
+export interface LensMutable<T extends { [method: string]: any }> extends LensAccessible<T> {
+    [LensMutate]: {
+        [M in keyof T]: (value: T[M]) => void; // void?
     };
 }

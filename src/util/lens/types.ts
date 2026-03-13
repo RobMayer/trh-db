@@ -1,4 +1,4 @@
-import { LensSubAccess, AllStringKeys, LensSubQuery, SafeLookup, Comparable } from "../../types";
+import { LensSubAccess, LensAccess, AllStringKeys, LensSubQuery, LensQuery, SafeLookup, Comparable } from "../../types";
 import { LogicalOps, PredicateResult } from "../logic";
 import { Predicate } from "../predicate";
 
@@ -72,6 +72,17 @@ export type QueryLens<Eval, Chain = Eval> = {
         ? {
               [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
           }
+        : {}) &
+    // Custom (named property)
+    (NonNullable<Chain> extends { [LensQuery]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {}) &
+    (NonNullable<Chain> extends { [LensAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
         : {});
 //#endregion
 
@@ -119,19 +130,120 @@ export type GetterLens<Eval, Chain = Eval> = {
               size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
           }
         : {}) &
-    // Custom
+    // Custom (keyed)
     (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
         ? {
               [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => GetterLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {}) &
+    // Custom (named property)
+    (NonNullable<Chain> extends { [LensAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => GetterLens<WithCardnality<Eval, Chain, VT>, VT> : never;
           }
         : {});
 
 //#endregion
 
 // reserved for future use
-type UpdaterLens<V> = unknown; // possible supertype of MutaterLens and ApplierLens
-type MutaterLens<V> = unknown;
-type ApplierLens<V> = unknown;
+
+export type MutatorLens<Eval, Chain = Eval> = {
+    readonly [BRAND]: Eval;
+} &
+    // Array
+    (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
+        ? {
+              (index: number): MutatorLens<WithCardnality<Eval, Chain, E>, E>;
+              at(index: number): MutatorLens<WithCardnality<Eval, Chain, E>, E>;
+              each(): MutatorLens<E[], E>;
+              where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): MutatorLens<Eval, Chain>;
+              filter(fn: (item: ElementOf<Chain>) => boolean): MutatorLens<Eval, Chain>;
+              slice(start: number, end?: number): MutatorLens<Eval, Chain>;
+              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLensOf<R>, dir: SortDirection): UpdaterLens<Eval, Chain>;
+              // sort(comparator: (a: E, b: E) => number): UpdaterLens<Eval, Chain>;
+              // push/pop/shift/unshift?
+          }
+        : {}) &
+    // Any-object
+    (NonNullable<Chain> extends object
+        ? {
+              <Key extends AllStringKeys<Chain>>(key: Key): MutatorLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+          }
+        : {}) &
+    // Set
+    (NonNullable<Chain> extends Set<infer SV>
+        ? {
+              // add/remove? -- maybe as terminal calls?
+          }
+        : {}) &
+    // Map
+    (NonNullable<Chain> extends Map<infer MK, infer MV>
+        ? {
+              get(key: MK): MutatorLens<WithCardnality<Eval, Chain, MV>, MV>;
+              // add/remove? -- maybe as terminal calls?
+          }
+        : {}) &
+    // Custom (keyed)
+    (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => MutatorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {}) &
+    // Custom (named property)
+    (NonNullable<Chain> extends { [LensAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => MutatorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {});
+
+export type ApplierLens<Eval, Chain = Eval> = {
+    readonly [BRAND]: Eval;
+} &
+    // Array
+    (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
+        ? {
+              (index: number): ApplierLens<WithCardnality<Eval, Chain, E>, E>;
+              at(index: number): ApplierLens<WithCardnality<Eval, Chain, E>, E>;
+              each(): ApplierLens<E[], E>;
+              where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): ApplierLens<Eval, Chain>;
+              filter(fn: (item: ElementOf<Chain>) => boolean): ApplierLens<Eval, Chain>;
+              slice(start: number, end?: number): ApplierLens<Eval, Chain>;
+              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLensOf<R>, dir: SortDirection): UpdaterLens<Eval, Chain>;
+              // sort(comparator: (a: E, b: E) => number): UpdaterLens<Eval, Chain>;
+              // push/pop/shift/unshift - wouldn't *actually* call push, pop, shift, unshift, but would rather do the immutable version under the hood... I guess?
+          }
+        : {}) &
+    // Any-object
+    (NonNullable<Chain> extends object
+        ? {
+              <Key extends AllStringKeys<Chain>>(key: Key): ApplierLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+          }
+        : {}) &
+    // Set
+    (NonNullable<Chain> extends Set<infer SV>
+        ? {
+              // add/remove?
+          }
+        : {}) &
+    // Map
+    (NonNullable<Chain> extends Map<infer MK, infer MV>
+        ? {
+              get(key: MK): ApplierLens<WithCardnality<Eval, Chain, MV>, MV>;
+              // add/remove?
+          }
+        : {}) &
+    // Custom (keyed)
+    (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => ApplierLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {}) &
+    // Custom (named property)
+    (NonNullable<Chain> extends { [LensAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => ApplierLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {});
 
 //#region - Helpers
 type ElementOf<T> = NonNullable<T> extends (infer E)[] | readonly (infer E)[] ? E : never;
