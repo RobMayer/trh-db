@@ -5,6 +5,8 @@ import { Predicate } from "../predicate";
 // Eval = the type this lens evaluates to (what predicates see, what get() returns)
 // Chain = the type used for property/index chaining (defaults to Eval)
 
+export type SortDirection = "asc" | "desc" | { direction: "asc" | "desc"; nullish?: "first" | "last" };
+
 //#region - Query Lens
 export type QueryLens<Eval, Chain = Eval> = {
     readonly [BRAND]: Eval;
@@ -23,7 +25,7 @@ export type QueryLens<Eval, Chain = Eval> = {
               where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): QueryLens<Eval, Chain>;
               filter(fn: (item: ElementOf<Chain>) => boolean): QueryLens<Eval, Chain>;
               slice(start: number, end?: number): QueryLens<Eval, Chain>;
-              sort<R extends string | number | bigint | Comparable>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLens<R>, dir: "asc" | "desc"): QueryLens<Eval, Chain>;
+              sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLensOf<R>, dir: SortDirection): QueryLens<Eval, Chain>;
               sort(comparator: (a: E, b: E) => number): QueryLens<Eval, Chain>;
               size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
               length(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
