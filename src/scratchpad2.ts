@@ -117,7 +117,18 @@
 */
 
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "./types";
-import { WhereClause, SortClause } from "./util/lens";
+import { GetterLens } from "./util/lens";
+import { WhereClause, SortClause } from "./util/traversal";
+
+// todo: what will eventually replace WhereClause
+type WhereClauseNew = <D>(
+    $: GetterLens<D> & {
+        ID: GetterLens<string>;
+        PARENT: GetterLens<string | null>;
+        CHILDREN: GetterLens<string[]>;
+        DEPTH: GetterLens<number>;
+    },
+) => unknown;
 
 class TreeDBNew<D> {
     // --- Direct methods (bypass pipeline) ---

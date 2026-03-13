@@ -3,6 +3,14 @@ export type Codec = {
     parse: (token: unknown) => unknown;
 };
 
+// --- Union-safe key distribution ---
+
+// Distributes keyof over union members: AllStringKeys<A | B> = keyof A | keyof B
+export type AllStringKeys<T> = T extends any ? keyof T & string : never;
+
+// Safe lookup across union members: yields the value type where the key exists, undefined elsewhere
+export type SafeLookup<T, K extends string> = T extends any ? (K extends keyof T ? T[K] : undefined) : never;
+
 export type ListOf<D> = Set<D> | D[];
 export type ListOr<D> = D | Set<D> | D[];
 export type Updater<T, C> = T | ((prev: T, context: C) => T);
