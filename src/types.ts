@@ -53,8 +53,8 @@ export const TypeOf = Symbol();
 export const LensAccess = Symbol();
 export const LensSubAccess = Symbol();
 
-export const LensQuery = Symbol();
-export const LensSubQuery = Symbol();
+export const LensSelect = Symbol();
+export const LensSubSelect = Symbol();
 
 export const LensMutate = Symbol();
 export const LensSubMutate = Symbol();
@@ -84,8 +84,8 @@ export interface LensSubAccessible<T extends { [method: string]: [any, any] }> {
     };
 }
 
-export interface LensSubQueryable<T extends { [method: string]: [any, any] }> {
-    [LensSubQuery]: {
+export interface LensSubSelectable<T extends { [method: string]: [any, any] }> {
+    [LensSubSelect]: {
         [M in keyof T]: (key: T[M][0]) => T[M][1];
     };
 }
@@ -104,8 +104,8 @@ export interface LensSubApplicable<T extends { [method: string]: [any, any] }> e
 
 // property
 
-export interface LensQueryable<T extends { [method: string]: any }> {
-    [LensQuery]: {
+export interface LensSelectable<T extends { [method: string]: any }> {
+    [LensSelect]: {
         [M in keyof T]: () => T[M];
     };
 }

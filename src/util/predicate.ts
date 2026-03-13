@@ -1,5 +1,5 @@
 import { Comparable } from "../types";
-import { QueryLens, QueryLensOf } from "./lens/types";
+import { SelectorLens, SelectorLensOf } from "./lens/types";
 
 // --- Operator catalog ---
 
@@ -78,26 +78,26 @@ export type OperandFor<O, Op> =
               : // Array contains: RHS is element type
                 Op extends HasOp
                 ? O extends (infer E)[]
-                    ? E | QueryLens<E>
+                    ? E | SelectorLens<E>
                     : never
                 : Op extends HasAnyOfOp | HasAllOfOp
                   ? O extends (infer E)[]
-                      ? (E | QueryLens<E>)[]
+                      ? (E | SelectorLens<E>)[]
                       : never
                   : // Any-of / all-of: RHS is array of O
                     Op extends AnyOfOp
-                    ? (O | QueryLens<O>)[]
+                    ? (O | SelectorLens<O>)[]
                     : // Default: RHS is O
-                          O | QueryLens<O>;
+                          O | SelectorLens<O>;
 
 // --- The Predicate tuple ---
 
 export type Predicate<O> =
-    | [subject: O | QueryLensOf<O>, op: NoInfer<OperatorFor<O, 2>>]
-    | [subject: O | QueryLensOf<O>, op: NoInfer<OperatorFor<O, 3>>, operand: NoInfer<OperandFor<O, OperatorFor<O, 3>>> | QueryLensOf<any>]
+    | [subject: O | SelectorLensOf<O>, op: NoInfer<OperatorFor<O, 2>>]
+    | [subject: O | SelectorLensOf<O>, op: NoInfer<OperatorFor<O, 3>>, operand: NoInfer<OperandFor<O, OperatorFor<O, 3>>> | SelectorLensOf<any>]
     | [
-          subject: O | QueryLensOf<O>,
+          subject: O | SelectorLensOf<O>,
           op: NoInfer<OperatorFor<O, 4>>,
-          operand1: NoInfer<OperandFor<O, OperatorFor<O, 4>>> | QueryLensOf<any>,
-          operand2: NoInfer<OperandFor<O, OperatorFor<O, 4>>> | QueryLensOf<any>,
+          operand1: NoInfer<OperandFor<O, OperatorFor<O, 4>>> | SelectorLensOf<any>,
+          operand2: NoInfer<OperandFor<O, OperatorFor<O, 4>>> | SelectorLensOf<any>,
       ];

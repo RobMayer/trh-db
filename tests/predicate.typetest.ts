@@ -1,4 +1,4 @@
-import { QueryLens } from "../src/util/lens/types";
+import { SelectorLens } from "../src/util/lens/types";
 import { Predicate } from "../src/util/predicate";
 import { LogicalOps, PredicateResult } from "../src/util/logic";
 
@@ -16,12 +16,12 @@ type TestData = {
 };
 
 type TestMeta = {
-    ID: QueryLens<string>;
-    DEPTH: QueryLens<number>;
+    ID: SelectorLens<string>;
+    DEPTH: SelectorLens<number>;
 };
 
 // Minimal where function for testing predicate inference
-declare function where<T>(pred: ($: QueryLens<TestData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function where<T>(pred: ($: SelectorLens<TestData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // ============================================================
 // Property Access in Predicates
@@ -160,7 +160,7 @@ where(($) => $.or([$("age"), "><", 18, 25], [$("name"), "%", "A"]));
 
 type UnionData = { type: "person"; age: number; name: string } | { type: "book"; title: string; pages: number };
 
-declare function uWhere<T>(pred: ($: QueryLens<UnionData> & { ID: QueryLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function uWhere<T>(pred: ($: SelectorLens<UnionData> & { ID: SelectorLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // Common key
 uWhere(($) => [$("type"), "=", "person"]);
@@ -183,7 +183,7 @@ uWhere(($) => [$("name"), "=|", ["Alice", "Bob"]]);
 // Nested union
 type NestedUnionData = { type: "a"; meta: { score: number } } | { type: "b"; meta: { label: string } };
 
-declare function nuWhere<T>(pred: ($: QueryLens<NestedUnionData> & { ID: QueryLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function nuWhere<T>(pred: ($: SelectorLens<NestedUnionData> & { ID: SelectorLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 nuWhere(($) => [$("type"), "=", "a"]);
 nuWhere(($) => [$("meta")("score"), ">", 5]);
@@ -205,7 +205,7 @@ type OptionalData = {
     nested: { value: number; label?: string };
 };
 
-declare function oWhere<T>(pred: ($: QueryLens<OptionalData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function oWhere<T>(pred: ($: SelectorLens<OptionalData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // Required fields
 oWhere(($) => [$("name"), "=", "Alice"]);
@@ -258,7 +258,7 @@ type UnaryMapSetData = {
     mySet: Set<string>;
 };
 
-declare function msWhere<T>(pred: ($: QueryLens<UnaryMapSetData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function msWhere<T>(pred: ($: SelectorLens<UnaryMapSetData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // Map.has() → boolean lens → unary check
 msWhere(($) => [$("myMap").has("someKey"), "?"]);
@@ -284,7 +284,7 @@ type EachData = {
     tags: string[];
 };
 
-declare function eWhere<T>(pred: ($: QueryLens<EachData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function eWhere<T>(pred: ($: SelectorLens<EachData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // After .each(), Eval = string[] so "#" (array has) is valid
 eWhere(($) => [$("addresses").each()("type"), "#", "shipping"]);

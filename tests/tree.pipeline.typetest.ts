@@ -1,5 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../src/types";
-import { QueryLens } from "../src/util/lens/types";
+import { SelectorLens } from "../src/util/lens/types";
 import { LogicalOps, PredicateResult } from "../src/util/logic";
 import { Predicate } from "../src/util/predicate";
 
@@ -8,10 +8,10 @@ import { Predicate } from "../src/util/predicate";
 // ============================================================
 
 type LensMeta = {
-    ID: QueryLens<string>;
-    PARENT: QueryLens<string | null>;
-    CHILDREN: QueryLens<string[]>;
-    DEPTH: QueryLens<number>;
+    ID: SelectorLens<string>;
+    PARENT: SelectorLens<string | null>;
+    CHILDREN: SelectorLens<string[]>;
+    DEPTH: SelectorLens<number>;
 };
 
 type Item<D> = TreeItemOf<D>;
@@ -34,7 +34,7 @@ interface Terminals<D, C extends Cardinality> {
 interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     // Filtering
     where: {
-        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
+        <T>(lens: ($: SelectorLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
     };
 
     // Tree traversal (always produces multi)
@@ -53,7 +53,7 @@ interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
 
     // Presentation (preserves cardinality)
     sort: {
-        <T>(accessor: ($: QueryLens<D> & LensMeta) => QueryLens<T>, direction: "asc" | "desc"): TreePipeline<D, C>;
+        <T>(accessor: ($: SelectorLens<D> & LensMeta) => SelectorLens<T>, direction: "asc" | "desc"): TreePipeline<D, C>;
     };
     distinct(): TreePipeline<D, C>;
     slice(start: number, end?: number): TreePipeline<D, C>;
@@ -81,7 +81,7 @@ class TreeDBNew<D> {
 
     // --- Chain starters → pipeline ---
     where: {
-        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
+        <T>(lens: ($: SelectorLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
     } = (() => {}) as any;
     select: {
         (target: TreeId): TreePipeline<D, "single">;

@@ -1,23 +1,18 @@
-import { GetterLens, GetterLensOf, QueryLens, QueryLensOf } from "./types";
-import { Compare, Equals, TypeOf, LensSubQuery, LensSubAccess, LensQuery, LensAccess } from "../../types";
+import { SelectorLens, SelectorLensOf } from "./types";
+import { Compare, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess } from "../../types";
 
 //#region - Public API
 
 export namespace Lens {
-    export const query = <D, R>(data: D, lens: ($: QueryLens<D>) => QueryLensOf<R>): R => {
+    export const get = <D, R>(data: D, lens: ($: SelectorLens<D>) => SelectorLensOf<R>): R => {
         const proxy = createProxy({ value: data, isEach: false });
         const result = lens(proxy);
         return (result as any)[LENS].value;
     };
-    export const get = <D, R>(data: D, lens: ($: GetterLens<D>) => GetterLensOf<R>): R => {
-        const proxy = createProxy({ value: data, isEach: false });
-        const result = lens(proxy as any);
-        return (result as any)[LENS].value;
-    };
     /*
     todo: after we solidify what MutateLens and ApplyLens is like
-    const mutate = <D, R>(data: D, lens: ($: UpdaterLens<D>) => UpdaterLens<R>, value: R | ((prev: R) => R)): void => {};
-    const apply = <D, R>(data: D, lens: ($: UpdaterLens<D>) => UpdaterLens<R>, value: R | ((prev: readonly R) => R)): D => { // note: readonly R probably needs to be deeply-nested readonly somehow?
+    const mutate = <D, R>(data: D, lens: ($: MutatorLens<D>) => MutatorLensOf<R>, value: R | ((prev: R) => R)): void => {};
+    const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: readonly R) => R)): D => {
         return {} as any;
     };
     */
@@ -421,7 +416,7 @@ function createProxy(state: LensState): any {
             if (typeof prop === "string") {
                 // Keyed (LensSubQuery / LensSubAccess)
                 const keyedDispatch = (v: any): ((key: any) => unknown) | undefined => {
-                    const sub = v?.[LensSubQuery]?.[prop] ?? v?.[LensSubAccess]?.[prop];
+                    const sub = v?.[LensSubSelect]?.[prop] ?? v?.[LensSubAccess]?.[prop];
                     return typeof sub === "function" ? sub : undefined;
                 };
 
@@ -435,7 +430,7 @@ function createProxy(state: LensState): any {
 
                 // Named property (LensQuery / LensAccess)
                 const namedDispatch = (v: any): (() => unknown) | undefined => {
-                    const sub = v?.[LensQuery]?.[prop] ?? v?.[LensAccess]?.[prop];
+                    const sub = v?.[LensSelect]?.[prop] ?? v?.[LensAccess]?.[prop];
                     return typeof sub === "function" ? sub : undefined;
                 };
 

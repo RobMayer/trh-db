@@ -1,4 +1,4 @@
-import { LensSubAccess, LensAccess, AllStringKeys, LensSubQuery, LensQuery, SafeLookup, Comparable } from "../../types";
+import { LensSubAccess, LensAccess, AllStringKeys, LensSubSelect, LensSelect, SafeLookup, Comparable } from "../../types";
 import { LogicalOps, PredicateResult } from "../logic";
 import { Predicate } from "../predicate";
 
@@ -7,34 +7,34 @@ import { Predicate } from "../predicate";
 
 export type SortDirection = "asc" | "desc" | { direction: "asc" | "desc"; nullish?: "first" | "last" };
 
-//#region - Query Lens
-export type QueryLens<Eval, Chain = Eval> = {
+//#region - Selector Lens
+export type SelectorLens<Eval, Chain = Eval> = {
     readonly [BRAND]: Eval;
-    transform<R>(transformer: (subject: NonNullable<Chain>) => R): QueryLens<WithCardnality<Eval, Chain, R>, R>;
+    transform<R>(transformer: (subject: NonNullable<Chain>) => R): SelectorLens<WithCardnality<Eval, Chain, R>, R>;
 } & (NonNullable<Chain> extends string
     ? {
-          size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+          size(): SelectorLens<WithCardnality<Eval, Chain, number>, number>;
       }
     : {}) &
     // Array
     (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
         ? {
-              (index: number): QueryLens<WithCardnality<Eval, Chain, E>, E>;
-              at(index: number): QueryLens<WithCardnality<Eval, Chain, E>, E>;
-              each(): QueryLens<E[], E>;
-              where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): QueryLens<Eval, Chain>;
-              filter(fn: (item: ElementOf<Chain>) => boolean): QueryLens<Eval, Chain>;
-              slice(start: number, end?: number): QueryLens<Eval, Chain>;
-              sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLensOf<R>, dir: SortDirection): QueryLens<Eval, Chain>;
-              sort(comparator: (a: E, b: E) => number): QueryLens<Eval, Chain>;
-              size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
-              length(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+              (index: number): SelectorLens<WithCardnality<Eval, Chain, E>, E>;
+              at(index: number): SelectorLens<WithCardnality<Eval, Chain, E>, E>;
+              each(): SelectorLens<E[], E>;
+              where(pred: ($: SelectorLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): SelectorLens<Eval, Chain>;
+              filter(fn: (item: ElementOf<Chain>) => boolean): SelectorLens<Eval, Chain>;
+              slice(start: number, end?: number): SelectorLens<Eval, Chain>;
+              sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<ElementOf<Chain>>) => SelectorLensOf<R>, dir: SortDirection): SelectorLens<Eval, Chain>;
+              sort(comparator: (a: E, b: E) => number): SelectorLens<Eval, Chain>;
+              size(): SelectorLens<WithCardnality<Eval, Chain, number>, number>;
+              length(): SelectorLens<WithCardnality<Eval, Chain, number>, number>;
           }
         : {}) &
     // Any-object
     (NonNullable<Chain> extends object
         ? {
-              <Key extends AllStringKeys<Chain>>(key: Key): QueryLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+              <Key extends AllStringKeys<Chain>>(key: Key): SelectorLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
           }
         : {}) &
     // Plain-ish Object
@@ -42,106 +42,49 @@ export type QueryLens<Eval, Chain = Eval> = {
         ? NonNullable<Chain> extends any[]
             ? never
             : {
-                  keys(): QueryLens<WithCardnality<Eval, Chain, string[]>, string[]>;
-                  values(): QueryLens<WithCardnality<Eval, Chain, V[]>, V[]>;
-                  size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+                  keys(): SelectorLens<WithCardnality<Eval, Chain, string[]>, string[]>;
+                  values(): SelectorLens<WithCardnality<Eval, Chain, V[]>, V[]>;
+                  size(): SelectorLens<WithCardnality<Eval, Chain, number>, number>;
               }
         : {}) &
     // Set
     (NonNullable<Chain> extends Set<infer SV>
         ? {
-              has(value: SV): QueryLens<WithCardnality<Eval, Chain, boolean>, boolean>;
-              size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+              has(value: SV): SelectorLens<WithCardnality<Eval, Chain, boolean>, boolean>;
+              size(): SelectorLens<WithCardnality<Eval, Chain, number>, number>;
           }
         : {}) &
     // Map
     (NonNullable<Chain> extends Map<infer MK, infer MV>
         ? {
-              get(key: MK): QueryLens<WithCardnality<Eval, Chain, MV>, MV>;
-              has(key: MK): QueryLens<WithCardnality<Eval, Chain, boolean>, boolean>;
-              size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+              get(key: MK): SelectorLens<WithCardnality<Eval, Chain, MV>, MV>;
+              has(key: MK): SelectorLens<WithCardnality<Eval, Chain, boolean>, boolean>;
+              size(): SelectorLens<WithCardnality<Eval, Chain, number>, number>;
           }
         : {}) &
     // Custom
-    (NonNullable<Chain> extends { [LensSubQuery]: infer Methods }
+    (NonNullable<Chain> extends { [LensSubSelect]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => SelectorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
           }
         : {}) &
     (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => SelectorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
           }
         : {}) &
     // Custom (named property)
-    (NonNullable<Chain> extends { [LensQuery]: infer Methods }
+    (NonNullable<Chain> extends { [LensSelect]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => SelectorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
           }
         : {}) &
     (NonNullable<Chain> extends { [LensAccess]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => SelectorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
           }
         : {});
 //#endregion
-
-//#region - Getter Lens
-export type GetterLens<Eval, Chain = Eval> = {
-    readonly [BRAND]: Eval;
-} & (NonNullable<Chain> extends string
-    ? {
-          size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
-      }
-    : {}) &
-    // Array
-    (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
-        ? {
-              (index: number): GetterLens<WithCardnality<Eval, Chain, E>, E>;
-              at(index: number): GetterLens<WithCardnality<Eval, Chain, E>, E>;
-              size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
-              length(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
-          }
-        : {}) &
-    // Any-object
-    (NonNullable<Chain> extends object
-        ? {
-              <Key extends AllStringKeys<Chain>>(key: Key): GetterLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
-          }
-        : {}) &
-    // Plain-ish Object
-    (NonNullable<Chain> extends Record<string, infer V>
-        ? NonNullable<Chain> extends any[]
-            ? never
-            : {
-                  size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
-              }
-        : {}) &
-    // Set
-    (NonNullable<Chain> extends Set<infer SV>
-        ? {
-              size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
-          }
-        : {}) &
-    // Map
-    (NonNullable<Chain> extends Map<infer MK, infer MV>
-        ? {
-              get(key: MK): GetterLens<WithCardnality<Eval, Chain, MV>, MV>;
-              size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
-          }
-        : {}) &
-    // Custom (keyed)
-    (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
-        ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => GetterLens<WithCardnality<Eval, Chain, VT>, VT> : never;
-          }
-        : {}) &
-    // Custom (named property)
-    (NonNullable<Chain> extends { [LensAccess]: infer Methods }
-        ? {
-              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => GetterLens<WithCardnality<Eval, Chain, VT>, VT> : never;
-          }
-        : {});
 
 //#endregion
 
@@ -156,12 +99,11 @@ export type MutatorLens<Eval, Chain = Eval> = {
               (index: number): MutatorLens<WithCardnality<Eval, Chain, E>, E>;
               at(index: number): MutatorLens<WithCardnality<Eval, Chain, E>, E>;
               each(): MutatorLens<E[], E>;
-              where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): MutatorLens<Eval, Chain>;
+              where(pred: ($: SelectorLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): MutatorLens<Eval, Chain>;
               filter(fn: (item: ElementOf<Chain>) => boolean): MutatorLens<Eval, Chain>;
               slice(start: number, end?: number): MutatorLens<Eval, Chain>;
-              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLensOf<R>, dir: SortDirection): UpdaterLens<Eval, Chain>;
-              // sort(comparator: (a: E, b: E) => number): UpdaterLens<Eval, Chain>;
-              // push/pop/shift/unshift?
+              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<ElementOf<Chain>>) => SelectorLensOf<R>, dir: SortDirection): MutatorLens<Eval, Chain>;
+              // sort(comparator: (a: E, b: E) => number): MutatorLens<Eval, Chain>;
           }
         : {}) &
     // Any-object
@@ -205,12 +147,11 @@ export type ApplierLens<Eval, Chain = Eval> = {
               (index: number): ApplierLens<WithCardnality<Eval, Chain, E>, E>;
               at(index: number): ApplierLens<WithCardnality<Eval, Chain, E>, E>;
               each(): ApplierLens<E[], E>;
-              where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): ApplierLens<Eval, Chain>;
+              where(pred: ($: SelectorLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): ApplierLens<Eval, Chain>;
               filter(fn: (item: ElementOf<Chain>) => boolean): ApplierLens<Eval, Chain>;
               slice(start: number, end?: number): ApplierLens<Eval, Chain>;
-              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLensOf<R>, dir: SortDirection): UpdaterLens<Eval, Chain>;
-              // sort(comparator: (a: E, b: E) => number): UpdaterLens<Eval, Chain>;
-              // push/pop/shift/unshift - wouldn't *actually* call push, pop, shift, unshift, but would rather do the immutable version under the hood... I guess?
+              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<ElementOf<Chain>>) => SelectorLensOf<R>, dir: SortDirection): ApplierLens<Eval, Chain>;
+              // sort(comparator: (a: E, b: E) => number): ApplierLens<Eval, Chain>;
           }
         : {}) &
     // Any-object
@@ -255,8 +196,7 @@ type WithCardnality<Eval, Chain, NewChain> = [Eval] extends [Chain] ? NewChain :
 
 declare const BRAND: unique symbol;
 
-export type QueryLensOf<E> = { readonly [BRAND]: E };
-export type GetterLensOf<E> = { readonly [BRAND]: E };
+export type SelectorLensOf<E> = { readonly [BRAND]: E };
 type MutatorLensOf<E> = { readonly [BRAND]: E };
 type ApplierLensOf<E> = { readonly [BRAND]: E };
 
