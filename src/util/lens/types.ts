@@ -1,6 +1,6 @@
-import { LensSubAccess, AllStringKeys, LensSubQuery, SafeLookup, Comparable } from "../types";
-import { LogicalOps, PredicateResult } from "./logic";
-import { Predicate } from "./predicate";
+import { LensSubAccess, AllStringKeys, LensSubQuery, SafeLookup, Comparable } from "../../types";
+import { LogicalOps, PredicateResult } from "../logic";
+import { Predicate } from "../predicate";
 
 // Eval = the type this lens evaluates to (what predicates see, what get() returns)
 // Chain = the type used for property/index chaining (defaults to Eval)

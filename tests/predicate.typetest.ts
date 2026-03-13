@@ -1,4 +1,4 @@
-import { QueryLens } from "../src/util/lens";
+import { QueryLens } from "../src/util/lens/types";
 import { Predicate } from "../src/util/predicate";
 import { LogicalOps, PredicateResult } from "../src/util/logic";
 

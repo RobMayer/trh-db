@@ -1,5 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../src/types";
-import { QueryLens } from "../src/util/lens";
+import { QueryLens } from "../src/util/lens/types";
 import { LogicalOps, PredicateResult } from "../src/util/logic";
 import { Predicate } from "../src/util/predicate";
 

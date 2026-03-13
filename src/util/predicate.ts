@@ -1,5 +1,5 @@
 import { Comparable } from "../types";
-import { QueryLens, QueryLensOf } from "./lens";
+import { QueryLens, QueryLensOf } from "./lens/types";
 
 // --- Operator catalog ---
 

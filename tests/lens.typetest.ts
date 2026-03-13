@@ -1,5 +1,5 @@
 import { LensSubAccessible, LensSubAccess, LensSubQueryable, LensSubQuery } from "../src/types";
-import { QueryLens } from "../src/util/lens";
+import { QueryLens } from "../src/util/lens/types";
 
 // ============================================================
 // Test Data Shapes
