@@ -1,3 +1,4 @@
+import { Accessible, Access } from "../src/types";
 import { GetterLens } from "../src/util/lens";
 
 // ============================================================
@@ -82,6 +83,17 @@ const nu_label: GetterLens<string | undefined> = nu$("meta")("label");
 // Optional Field Support
 // ============================================================
 
+class Example implements Accessible<{ link: [string, string]; node: [string, number]; has: [string, boolean] }> {
+    link = (k: string) => "hi";
+    node = (k: string) => 0;
+    has = (k: string) => false;
+    [Access] = {
+        link: this.link,
+        node: this.node,
+        has: this.has,
+    };
+}
+
 type OptionalData = {
     name: string;
     age: number;
@@ -91,6 +103,7 @@ type OptionalData = {
     nested: { value: number; label?: string };
     someDate: Date;
     someMap: Map<string, number>;
+    someExample: Example;
 };
 
 declare const o$: GetterLens<OptionalData>;
@@ -112,3 +125,5 @@ const o_value: GetterLens<number> = o$("nested")("value");
 
 // Utility on optional array
 const o_tags_size: GetterLens<number> = o$("tags").size();
+
+const o_weird = o$("someExample").has("test");

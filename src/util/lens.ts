@@ -1,4 +1,4 @@
-import { AllStringKeys, SafeLookup } from "../types";
+import { Access, AllStringKeys, SafeLookup } from "../types";
 
 export type GetterLens<T> = Accessor<T, "getter"> & {
     // .size() — for arrays, sets, maps, or strings → number
@@ -46,7 +46,14 @@ type MapAccessor<T, K extends LensKind> =
 type PropertyAccessor<T, K extends LensKind> = NonNullable<T> extends object ? { <Key extends AllStringKeys<T>>(key: Key): LensKinds<SafeLookup<T, Key>>[K] } : {};
 type IndexAccessor<T, K extends LensKind> = NonNullable<T> extends (infer E)[] ? { (index: number): LensKinds<E>[K] } : {};
 
-type Accessor<T, K extends LensKind> = { readonly [BRAND]: T } & IndexAccessor<T, K> & PropertyAccessor<T, K> & MapAccessor<T, K> & SetAccessor<T, K>;
+type AccessibleAccessor<T, K extends LensKind> =
+    NonNullable<T> extends { [Access]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => LensKinds<VT>[K] : never;
+          }
+        : {};
+
+type Accessor<T, K extends LensKind> = { readonly [BRAND]: T } & IndexAccessor<T, K> & PropertyAccessor<T, K> & MapAccessor<T, K> & SetAccessor<T, K> & AccessibleAccessor<T, K>;
 
 declare const BRAND: unique symbol;
 

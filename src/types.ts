@@ -49,7 +49,7 @@ export type SocketedGraphLinkOf<L> = { id: GraphLinkId; fromNode: GraphNodeId; t
 export const Compare = Symbol();
 export const Equals = Symbol();
 export const TypeOf = Symbol();
-export const KeyMethods = Symbol();
+export const Access = Symbol();
 
 export interface Comparable {
     [Compare]: (other: unknown) => number; // -1, 0, 1
@@ -63,15 +63,8 @@ export interface Typeable {
     [TypeOf]: () => string;
 }
 
-export interface Keyable<T extends { [method: string]: [any, any] }> {
-    [KeyMethods]: {
-        [key in keyof T]: (key: T[key][0]) => T[key][1];
-    };
-}
-
-class Test implements Keyable<{ get: [string, string] }> {
-    get = (k: string) => "hi";
-    [KeyMethods]: { get: (key: string) => string } = {
-        get: this.get,
+export interface Accessible<T extends { [method: string]: [any, any] }> {
+    [Access]: {
+        [M in keyof T]: (key: T[M][0]) => T[M][1];
     };
 }
