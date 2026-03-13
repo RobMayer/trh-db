@@ -4,12 +4,9 @@ import { Predicate } from "./predicate";
 declare const PREDICATE_BRAND: unique symbol;
 export type PredicateResult = { readonly [PREDICATE_BRAND]: true };
 
-// Each combinator argument can be a predicate tuple OR a nested PredicateResult
-type CombinatorArg<T> = T extends PredicateResult ? T : Predicate<T>;
-
-export type CombinatorFn = {
-    or<Tuples extends (Predicate<any> | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<Tuples[K]> }): PredicateResult;
-    and<Tuples extends (Predicate<any> | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<Tuples[K]> }): PredicateResult;
-    not<T extends Predicate<any> | PredicateResult>(condition: CombinatorArg<T>): PredicateResult;
-    xor<Tuples extends (Predicate<any> | PredicateResult)[]>(...conditions: { [K in keyof Tuples]: CombinatorArg<Tuples[K]> }): PredicateResult;
+export type LogicalOps = {
+    or(...conditions: (Predicate<any> | PredicateResult)[]): PredicateResult;
+    and(...conditions: (Predicate<any> | PredicateResult)[]): PredicateResult;
+    not(condition: Predicate<any> | PredicateResult): PredicateResult;
+    xor(...conditions: (Predicate<any> | PredicateResult)[]): PredicateResult;
 };

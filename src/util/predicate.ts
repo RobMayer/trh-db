@@ -40,7 +40,7 @@ type TypeofAnyOfOp = ":|" | "!:|";
 // --- Operator → type mapping (parameterized by arity) ---
 
 // A = 3: standard ops; A = 4: range ops only
-type OperatorFor<O, A extends 3 | 4> = A extends 4
+export type OperatorFor<O, A extends 3 | 4> = A extends 4
     ? O extends number | bigint | string | Comparable
         ? RangeOp
         : never
@@ -59,7 +59,7 @@ type OperatorFor<O, A extends 3 | 4> = A extends 4
 type AnyOfOp = EqualityAnyOfOp | StringAnyOfOp | StringAllOfOp | RegexAnyOfOp | RegexAllOfOp | HasAnyOfOp | HasAllOfOp | TypeofAnyOfOp;
 
 // Map from operator to valid operand type
-type OperandFor<O, Op> =
+export type OperandFor<O, Op> =
     // Typeof: RHS is string
     Op extends TypeofOp
         ? string
@@ -88,5 +88,5 @@ type OperandFor<O, Op> =
 // --- The Predicate tuple ---
 
 export type Predicate<O> =
-    | [subject: O | GetterLens<O>, op: OperatorFor<O, 3>, operand: OperandFor<O, OperatorFor<O, 3>> | GetterLens<O>]
-    | [subject: O | GetterLens<O>, op: OperatorFor<O, 4>, operand1: OperandFor<O, OperatorFor<O, 4>> | GetterLens<O>, operand2: OperandFor<O, OperatorFor<O, 4>> | GetterLens<O>];
+    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 3>>, operand: NoInfer<OperandFor<O, OperatorFor<O, 3>> | GetterLens<O>>]
+    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 4>>, operand1: NoInfer<OperandFor<O, OperatorFor<O, 4>> | GetterLens<O>>, operand2: NoInfer<OperandFor<O, OperatorFor<O, 4>> | GetterLens<O>>];
