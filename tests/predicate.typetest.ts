@@ -215,6 +215,8 @@ oWhere(($) => [$("age"), ">", 18]);
 oWhere(($) => [$("nickname"), "=", "Ali"]);
 oWhere(($) => [$("score"), ">", 50]);
 oWhere(($) => [$("tags"), "#", "admin"]);
+oWhere(($) => [$("tags").at(0), "=", "test"]);
+oWhere(($) => [$("tags")(0), "=", "test"]);
 
 // String ops on optional string
 oWhere(($) => [$("nickname"), "%", "Ali"]);
@@ -222,11 +224,50 @@ oWhere(($) => [$("nickname"), "%", "Ali"]);
 // Nested optional field
 oWhere(($) => [$("nested")("label"), "%", "hello"]);
 
-// Optional field on RHS — currently errors (GetterLens<number | undefined> vs GetterLens<number>), needs fix
-// @ts-expect-error — known issue: optional RHS lens not assignable to required LHS lens
+// Optional field on RHS
 oWhere(($) => [$("age"), ">", $("score")]);
 
 oWhere(($) => [$("score"), ">", $("age")]);
 
 // Size of optional array
 oWhere(($) => [$("tags").size(), ">", 0]);
+
+// ============================================================
+// Unary Operators (2-member predicates)
+// ============================================================
+
+// Boolean field — truthiness
+where(($) => [$("active"), "?"]);
+where(($) => [$("active"), "!?"]);
+
+// Optional field — is defined?
+oWhere(($) => [$("nickname"), "?"]);
+oWhere(($) => [$("score"), "!?"]);
+
+// Nested optional field
+oWhere(($) => [$("nested")("label"), "?"]);
+
+// ============================================================
+// Unary Operators — Map/Set .has()
+// ============================================================
+
+type UnaryMapSetData = {
+    name: string;
+    active: boolean;
+    myMap: Map<string, number>;
+    mySet: Set<string>;
+};
+
+declare function msWhere<T>(pred: ($: GetterLens<UnaryMapSetData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+
+// Map.has() → boolean lens → unary check
+msWhere(($) => [$("myMap").has("someKey"), "?"]);
+msWhere(($) => [$("myMap").has("someKey"), "!?"]);
+
+// Set.has() → boolean lens → unary check
+msWhere(($) => [$("mySet").has("admin"), "?"]);
+msWhere(($) => [$("mySet").has("admin"), "!?"]);
+
+// Unary in combinators
+msWhere(($) => $.or([$("active"), "?"], [$("myMap").has("key"), "?"]));
+msWhere(($) => $.and([$("mySet").has("admin"), "?"], [$("name"), "=", "Alice"]));

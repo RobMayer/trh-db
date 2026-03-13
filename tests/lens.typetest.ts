@@ -55,9 +55,7 @@ const l_nested_values: GetterLens<(number | string[])[]> = $("nested").values();
 // Discriminated Union Support
 // ============================================================
 
-type UnionData =
-    | { type: "person"; age: number; name: string }
-    | { type: "book"; title: string; pages: number };
+type UnionData = { type: "person"; age: number; name: string } | { type: "book"; title: string; pages: number };
 
 declare const u$: GetterLens<UnionData>;
 
@@ -71,9 +69,7 @@ const u_pages: GetterLens<number | undefined> = u$("pages");
 const u_name: GetterLens<string | undefined> = u$("name");
 
 // Nested union with shared key, different nested shapes
-type NestedUnionData =
-    | { type: "a"; meta: { score: number } }
-    | { type: "b"; meta: { label: string } };
+type NestedUnionData = { type: "a"; meta: { score: number } } | { type: "b"; meta: { label: string } };
 
 declare const nu$: GetterLens<NestedUnionData>;
 
@@ -93,6 +89,8 @@ type OptionalData = {
     score?: number;
     tags?: string[];
     nested: { value: number; label?: string };
+    someDate: Date;
+    someMap: Map<string, number>;
 };
 
 declare const o$: GetterLens<OptionalData>;
@@ -103,8 +101,10 @@ const o_age: GetterLens<number> = o$("age");
 
 // Optional fields (T | undefined)
 const o_nick: GetterLens<string | undefined> = o$("nickname");
+const o_date: GetterLens<() => number> = o$("someDate")("getDay");
 const o_score: GetterLens<number | undefined> = o$("score");
 const o_tags: GetterLens<string[] | undefined> = o$("tags");
+const o_mapNumber: GetterLens<number> = o$("someMap").get("someKey");
 
 // Nested optional
 const o_label: GetterLens<string | undefined> = o$("nested")("label");

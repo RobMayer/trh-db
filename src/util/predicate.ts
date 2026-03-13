@@ -39,19 +39,24 @@ type TypeofAnyOfOp = ":|" | "!:|";
 
 // --- Operator → type mapping (parameterized by arity) ---
 
-// A = 3: standard ops; A = 4: range ops only
-export type OperatorFor<O, A extends 3 | 4> = A extends 4
+// Unary: no operand (truthiness check)
+type UnaryOp = "?" | "!?";
+
+// A = 2: unary ops; A = 3: standard ops; A = 4: range ops only
+export type OperatorFor<O, A extends 2 | 3 | 4> = A extends 4
     ? O extends number | bigint | string | Comparable
         ? RangeOp
         : never
-    : // A extends 3
-          | EqualityOp
-          | EqualityAnyOfOp
-          | TypeofOp
-          | TypeofAnyOfOp
-          | (O extends number | bigint | string | Comparable ? OrderingOp : never)
-          | (O extends string ? StringOp | StringAnyOfOp | StringAllOfOp | RegexOp | RegexAnyOfOp | RegexAllOfOp : never)
-          | (O extends any[] ? HasOp | HasAnyOfOp | HasAllOfOp : never);
+    : A extends 2
+      ? UnaryOp
+      : // A extends 3
+            | EqualityOp
+            | EqualityAnyOfOp
+            | TypeofOp
+            | TypeofAnyOfOp
+            | (O extends number | bigint | string | Comparable ? OrderingOp : never)
+            | (O extends string ? StringOp | StringAnyOfOp | StringAllOfOp | RegexOp | RegexAnyOfOp | RegexAllOfOp : never)
+            | (O extends any[] ? HasOp | HasAnyOfOp | HasAllOfOp : never);
 
 // --- Operand type mapping ---
 
@@ -88,5 +93,6 @@ export type OperandFor<O, Op> =
 // --- The Predicate tuple ---
 
 export type Predicate<O> =
-    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 3>>, operand: NoInfer<OperandFor<O, OperatorFor<O, 3>> | GetterLens<O>>]
-    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 4>>, operand1: NoInfer<OperandFor<O, OperatorFor<O, 4>> | GetterLens<O>>, operand2: NoInfer<OperandFor<O, OperatorFor<O, 4>> | GetterLens<O>>];
+    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 2>>]
+    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 3>>, operand: NoInfer<OperandFor<O, OperatorFor<O, 3>>> | GetterLens<any>]
+    | [subject: O | GetterLens<O>, op: NoInfer<OperatorFor<O, 4>>, operand1: NoInfer<OperandFor<O, OperatorFor<O, 4>>> | GetterLens<any>, operand2: NoInfer<OperandFor<O, OperatorFor<O, 4>>> | GetterLens<any>];

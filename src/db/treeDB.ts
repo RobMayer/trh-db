@@ -1,5 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../types";
-import { GetterLens } from "../util/lens";
+import { GetterLens, PathLens } from "../util/lens";
 import { LogicalOps, PredicateResult } from "../util/logic";
 import { Predicate } from "../util/predicate";
 
@@ -110,7 +110,7 @@ interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     at(index: number): TreePipeline<D, "single">;
 
     // Presentation (preserves cardinality)
-    sort: <T>(lens: ($: GetterLens<D> & LensMeta) => GetterLens<T>, dir: "asc" | "desc") => TreePipeline<D, C>;
+    sort: <T>(lens: ($: PathLens<D> & LensMeta) => PathLens<T>, dir: "asc" | "desc") => TreePipeline<D, C>;
     distinct(): TreePipeline<D, C>;
     slice(start: number, end?: number): TreePipeline<D, C>;
     paginate(page: number, perPage: number): TreePipeline<D, C>;
