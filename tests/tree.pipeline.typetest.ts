@@ -1,5 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../src/types";
-import { GetterLens } from "../src/util/lens";
+import { QueryLens } from "../src/util/lens";
 import { LogicalOps, PredicateResult } from "../src/util/logic";
 import { Predicate } from "../src/util/predicate";
 
@@ -8,10 +8,10 @@ import { Predicate } from "../src/util/predicate";
 // ============================================================
 
 type LensMeta = {
-    ID: GetterLens<string>;
-    PARENT: GetterLens<string | null>;
-    CHILDREN: GetterLens<string[]>;
-    DEPTH: GetterLens<number>;
+    ID: QueryLens<string>;
+    PARENT: QueryLens<string | null>;
+    CHILDREN: QueryLens<string[]>;
+    DEPTH: QueryLens<number>;
 };
 
 type Item<D> = TreeItemOf<D>;
@@ -34,7 +34,7 @@ interface Terminals<D, C extends Cardinality> {
 interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     // Filtering
     where: {
-        <T>(lens: ($: GetterLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
+        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
     };
 
     // Tree traversal (always produces multi)
@@ -53,7 +53,7 @@ interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
 
     // Presentation (preserves cardinality)
     sort: {
-        <T>(accessor: ($: GetterLens<D> & LensMeta) => GetterLens<T>, direction: "asc" | "desc"): TreePipeline<D, C>;
+        <T>(accessor: ($: QueryLens<D> & LensMeta) => QueryLens<T>, direction: "asc" | "desc"): TreePipeline<D, C>;
     };
     distinct(): TreePipeline<D, C>;
     slice(start: number, end?: number): TreePipeline<D, C>;
@@ -81,7 +81,7 @@ class TreeDBNew<D> {
 
     // --- Chain starters → pipeline ---
     where: {
-        <T>(lens: ($: GetterLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
+        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
     } = (() => {}) as any;
     select: {
         (target: TreeId): TreePipeline<D, "single">;
@@ -212,6 +212,15 @@ const op11 = myDb.where(($) => [$("age"), "!>=", 18]).get();
 // Sort with meta-fields
 // ============================================================
 
-const s1 = myDb.where(($) => [$("age"), ">", 0]).sort(($) => $("name"), "asc").get();
-const s2 = myDb.where(($) => [$("age"), ">", 0]).sort(($) => $.DEPTH, "desc").get();
-const s3 = myDb.where(($) => [$("age"), ">", 0]).sort(($) => $("nested")("deep"), "asc").get();
+const s1 = myDb
+    .where(($) => [$("age"), ">", 0])
+    .sort(($) => $("name"), "asc")
+    .get();
+const s2 = myDb
+    .where(($) => [$("age"), ">", 0])
+    .sort(($) => $.DEPTH, "desc")
+    .get();
+const s3 = myDb
+    .where(($) => [$("age"), ">", 0])
+    .sort(($) => $("nested")("deep"), "asc")
+    .get();

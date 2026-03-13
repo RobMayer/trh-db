@@ -49,7 +49,9 @@ export type SocketedGraphLinkOf<L> = { id: GraphLinkId; fromNode: GraphNodeId; t
 export const Compare = Symbol();
 export const Equals = Symbol();
 export const TypeOf = Symbol();
-export const Access = Symbol();
+export const LensSubAccess = Symbol();
+export const LensSubQuery = Symbol();
+export const Setter = Symbol();
 
 export interface Comparable {
     [Compare]: (other: unknown) => number; // -1, 0, 1
@@ -63,8 +65,14 @@ export interface Typeable {
     [TypeOf]: () => string;
 }
 
-export interface Accessible<T extends { [method: string]: [any, any] }> {
-    [Access]: {
+export interface LensSubAccessible<T extends { [method: string]: [any, any] }> {
+    [LensSubAccess]: {
+        [M in keyof T]: (key: T[M][0]) => T[M][1];
+    };
+}
+
+export interface LensSubQueryable<T extends { [method: string]: [any, any] }> {
+    [LensSubQuery]: {
         [M in keyof T]: (key: T[M][0]) => T[M][1];
     };
 }

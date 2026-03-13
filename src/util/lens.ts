@@ -1,65 +1,149 @@
-import { Access, AllStringKeys, SafeLookup } from "../types";
+import { LensSubAccess, AllStringKeys, LensSubQuery, SafeLookup, Comparable } from "../types";
+import { LogicalOps, PredicateResult } from "./logic";
+import { Predicate } from "./predicate";
 
-export type GetterLens<T> = Accessor<T, "getter"> & {
-    // .size() — for arrays, sets, maps, or strings → number
-    size(): T extends { length: number } | { size: number } ? GetterLens<number> : never;
+// Eval = the type this lens evaluates to (what predicates see, what get() returns)
+// Chain = the type used for property/index chaining (defaults to Eval)
 
-    // .length() — alias for .size() on array/string
-    length(): T extends { length: number } ? GetterLens<number> : never;
+//#region - Query Lens
+export type QueryLens<Eval, Chain = Eval> = {
+    readonly [BRAND]: Eval;
+    transform<R>(transformer: (subject: NonNullable<Chain>) => R): QueryLens<WithCardnality<Eval, Chain, R>, R>;
+} & (NonNullable<Chain> extends string
+    ? {
+          size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+      }
+    : {}) &
+    // Array
+    (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
+        ? {
+              (index: number): QueryLens<WithCardnality<Eval, Chain, E>, E>;
+              at(index: number): QueryLens<WithCardnality<Eval, Chain, E>, E>;
+              each(): QueryLens<E[], E>;
+              where(pred: ($: QueryLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): QueryLens<Eval, Chain>;
+              filter(fn: (item: ElementOf<Chain>) => boolean): QueryLens<Eval, Chain>;
+              slice(start: number, end?: number): QueryLens<Eval, Chain>;
+              sort<R extends string | number | bigint | Comparable>(target: ($: GetterLens<ElementOf<Chain>>) => GetterLens<R>, dir: "asc" | "desc"): QueryLens<Eval, Chain>;
+              sort(comparator: (a: E, b: E) => number): QueryLens<Eval, Chain>;
+              size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+              length(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+          }
+        : {}) &
+    // Any-object
+    (NonNullable<Chain> extends object
+        ? {
+              <Key extends AllStringKeys<Chain>>(key: Key): QueryLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+          }
+        : {}) &
+    // Plain-ish Object
+    (NonNullable<Chain> extends Record<string, infer V>
+        ? NonNullable<Chain> extends any[]
+            ? never
+            : {
+                  keys(): QueryLens<WithCardnality<Eval, Chain, string[]>, string[]>;
+                  values(): QueryLens<WithCardnality<Eval, Chain, V[]>, V[]>;
+                  size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+              }
+        : {}) &
+    // Set
+    (NonNullable<Chain> extends Set<infer SV>
+        ? {
+              has(value: SV): QueryLens<WithCardnality<Eval, Chain, boolean>, boolean>;
+              size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+          }
+        : {}) &
+    // Map
+    (NonNullable<Chain> extends Map<infer MK, infer MV>
+        ? {
+              get(key: MK): QueryLens<WithCardnality<Eval, Chain, MV>, MV>;
+              has(key: MK): QueryLens<WithCardnality<Eval, Chain, boolean>, boolean>;
+              size(): QueryLens<WithCardnality<Eval, Chain, number>, number>;
+          }
+        : {}) &
+    // Custom
+    (NonNullable<Chain> extends { [LensSubQuery]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {}) &
+    (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => QueryLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {});
+//#endregion
 
-    // .keys() — for objects/maps → string[]
-    keys(): T extends Record<string, any> ? GetterLens<string[]> : never;
+//#region - Getter Lens
+export type GetterLens<Eval, Chain = Eval> = {
+    readonly [BRAND]: Eval;
+} & (NonNullable<Chain> extends string
+    ? {
+          size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
+      }
+    : {}) &
+    // Array
+    (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
+        ? {
+              (index: number): GetterLens<WithCardnality<Eval, Chain, E>, E>;
+              at(index: number): GetterLens<WithCardnality<Eval, Chain, E>, E>;
+              size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
+              length(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
+          }
+        : {}) &
+    // Any-object
+    (NonNullable<Chain> extends object
+        ? {
+              <Key extends AllStringKeys<Chain>>(key: Key): GetterLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+          }
+        : {}) &
+    // Plain-ish Object
+    (NonNullable<Chain> extends Record<string, infer V>
+        ? NonNullable<Chain> extends any[]
+            ? never
+            : {
+                  size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
+              }
+        : {}) &
+    // Set
+    (NonNullable<Chain> extends Set<infer SV>
+        ? {
+              size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
+          }
+        : {}) &
+    // Map
+    (NonNullable<Chain> extends Map<infer MK, infer MV>
+        ? {
+              get(key: MK): GetterLens<WithCardnality<Eval, Chain, MV>, MV>;
+              size(): GetterLens<WithCardnality<Eval, Chain, number>, number>;
+          }
+        : {}) &
+    // Custom
+    (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => GetterLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+          }
+        : {});
 
-    // .values() — for objects/maps → array of values
-    values(): T extends Record<string, infer V> ? GetterLens<V[]> : never;
-
-    // .at(n) — for arrays → element type
-    at(index: number): T extends (infer E)[] ? GetterLens<E> : never;
-};
-
-// more strict path access.
-export type PathLens<T> = Accessor<T, "path"> & {
-    // .size() — for arrays, sets, maps, or strings → number
-    size(): T extends { length: number } | { size: number } ? PathLens<number> : never;
-
-    // .length() — alias for .size() on array/string
-    length(): T extends { length: number } ? PathLens<number> : never;
-
-    // .at(n) — for arrays → element type
-    at(index: number): T extends (infer E)[] ? PathLens<E> : never;
-};
-
-export type AccessLens<T> = Accessor<T, "access"> & MapAccessor<T, "access">;
+//#endregion
 
 // reserved for future use
-// V = Value
-type SetterLens<V> = any;
+type UpdaterLens<V> = unknown; // possible supertype of MutaterLens and ApplierLens
+type MutaterLens<V> = unknown;
+type ApplierLens<V> = unknown;
 
-type SetAccessor<T, K extends LensKind> = NonNullable<T> extends Set<infer SV> ? { has(value: SV): LensKinds<boolean>[K] } : {};
-type MapAccessor<T, K extends LensKind> =
-    NonNullable<T> extends Map<infer MK, infer MV>
-        ? {
-              get(key: MK): LensKinds<MV>[K];
-              has(key: MK): LensKinds<boolean>[K];
-          }
-        : {};
-type PropertyAccessor<T, K extends LensKind> = NonNullable<T> extends object ? { <Key extends AllStringKeys<T>>(key: Key): LensKinds<SafeLookup<T, Key>>[K] } : {};
-type IndexAccessor<T, K extends LensKind> = NonNullable<T> extends (infer E)[] ? { (index: number): LensKinds<E>[K] } : {};
+//#region - Helpers
+type ElementOf<T> = NonNullable<T> extends (infer E)[] | readonly (infer E)[] ? E : never;
 
-type AccessibleAccessor<T, K extends LensKind> =
-    NonNullable<T> extends { [Access]: infer Methods }
-        ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => LensKinds<VT>[K] : never;
-          }
-        : {};
-
-type Accessor<T, K extends LensKind> = { readonly [BRAND]: T } & IndexAccessor<T, K> & PropertyAccessor<T, K> & MapAccessor<T, K> & SetAccessor<T, K> & AccessibleAccessor<T, K>;
+// --- Eval/Chain transform ---
+// When Eval = Chain (normal): NewChain passes through unchanged.
+// When Eval != Chain (after .each()): wraps NewChain in [].
+type WithCardnality<Eval, Chain, NewChain> = [Eval] extends [Chain] ? NewChain : NewChain[];
 
 declare const BRAND: unique symbol;
 
-interface LensKinds<T> {
-    getter: GetterLens<T>;
-    path: PathLens<T>;
-    access: AccessLens<T>;
-}
-type LensKind = keyof LensKinds<any>;
+export type QueryLensOf<E> = { readonly [BRAND]: E };
+export type GetterLensOf<E> = { readonly [BRAND]: E };
+type MutatorLensOf<E> = { readonly [BRAND]: E };
+type ApplierLensOf<E> = { readonly [BRAND]: E };
+
+//#endregion

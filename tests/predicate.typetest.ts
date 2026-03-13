@@ -1,4 +1,4 @@
-import { GetterLens } from "../src/util/lens";
+import { QueryLens } from "../src/util/lens";
 import { Predicate } from "../src/util/predicate";
 import { LogicalOps, PredicateResult } from "../src/util/logic";
 
@@ -16,12 +16,12 @@ type TestData = {
 };
 
 type TestMeta = {
-    ID: GetterLens<string>;
-    DEPTH: GetterLens<number>;
+    ID: QueryLens<string>;
+    DEPTH: QueryLens<number>;
 };
 
 // Minimal where function for testing predicate inference
-declare function where<T>(pred: ($: GetterLens<TestData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function where<T>(pred: ($: QueryLens<TestData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // ============================================================
 // Property Access in Predicates
@@ -160,7 +160,7 @@ where(($) => $.or([$("age"), "><", 18, 25], [$("name"), "%", "A"]));
 
 type UnionData = { type: "person"; age: number; name: string } | { type: "book"; title: string; pages: number };
 
-declare function uWhere<T>(pred: ($: GetterLens<UnionData> & { ID: GetterLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function uWhere<T>(pred: ($: QueryLens<UnionData> & { ID: QueryLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // Common key
 uWhere(($) => [$("type"), "=", "person"]);
@@ -183,7 +183,7 @@ uWhere(($) => [$("name"), "=|", ["Alice", "Bob"]]);
 // Nested union
 type NestedUnionData = { type: "a"; meta: { score: number } } | { type: "b"; meta: { label: string } };
 
-declare function nuWhere<T>(pred: ($: GetterLens<NestedUnionData> & { ID: GetterLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function nuWhere<T>(pred: ($: QueryLens<NestedUnionData> & { ID: QueryLens<string> } & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 nuWhere(($) => [$("type"), "=", "a"]);
 nuWhere(($) => [$("meta")("score"), ">", 5]);
@@ -205,7 +205,7 @@ type OptionalData = {
     nested: { value: number; label?: string };
 };
 
-declare function oWhere<T>(pred: ($: GetterLens<OptionalData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function oWhere<T>(pred: ($: QueryLens<OptionalData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // Required fields
 oWhere(($) => [$("name"), "=", "Alice"]);
@@ -258,7 +258,7 @@ type UnaryMapSetData = {
     mySet: Set<string>;
 };
 
-declare function msWhere<T>(pred: ($: GetterLens<UnaryMapSetData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+declare function msWhere<T>(pred: ($: QueryLens<UnaryMapSetData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
 
 // Map.has() → boolean lens → unary check
 msWhere(($) => [$("myMap").has("someKey"), "?"]);
@@ -271,3 +271,51 @@ msWhere(($) => [$("mySet").has("admin"), "!?"]);
 // Unary in combinators
 msWhere(($) => $.or([$("active"), "?"], [$("myMap").has("key"), "?"]));
 msWhere(($) => $.and([$("mySet").has("admin"), "?"], [$("name"), "=", "Alice"]));
+
+// ============================================================
+// .each() — Predicates on Mapped Array Elements
+// ============================================================
+
+type Address = { type: string; location: string; zip: string };
+type EachData = {
+    name: string;
+    addresses: Address[];
+    matrix: number[][];
+    tags: string[];
+};
+
+declare function eWhere<T>(pred: ($: QueryLens<EachData> & TestMeta & LogicalOps) => Predicate<T> | PredicateResult): void;
+
+// After .each(), Eval = string[] so "#" (array has) is valid
+eWhere(($) => [$("addresses").each()("type"), "#", "shipping"]);
+eWhere(($) => [$("addresses").each()("type"), "#|", ["shipping", "billing"]]);
+eWhere(($) => [$("addresses").each()("zip"), "#", "12345"]);
+
+// .each() on simple string array — Eval = string[]
+eWhere(($) => [$("tags").each(), "#", "urgent"]);
+eWhere(($) => [$("tags").each(), "!#", "spam"]);
+
+// .each() then .size() — Eval = number[] → array has
+eWhere(($) => [$("addresses").each()("type").size(), "#", 4]);
+
+// Size of the addresses array itself (no .each()) — Eval = number → ordering
+eWhere(($) => [$("addresses").size(), ">", 0]);
+eWhere(($) => [$("addresses").size(), ">=", 1]);
+
+// .each() in combinators
+eWhere(($) => $.or([$("addresses").each()("type"), "#", "home"], [$("name"), "%", "A"]));
+eWhere(($) => $.and([$("tags").each(), "#", "vip"], [$("addresses").size(), ">", 0]));
+
+// .each() on matrix — Eval = number[][] → has array element
+eWhere(($) => [$("matrix").each().at(0), "#", 42]);
+
+// Range on .each() sizes
+eWhere(($) => [$("addresses").each()("location").size(), "#", 10]);
+
+eWhere(($) => [
+    $("tags")
+        .where((_) => [_, "=", "test"])
+        .size(),
+    ">",
+    3,
+]);

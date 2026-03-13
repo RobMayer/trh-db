@@ -1,5 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../types";
-import { GetterLens, PathLens } from "../util/lens";
+import { QueryLens, GetterLens } from "../util/lens";
 import { LogicalOps, PredicateResult } from "../util/logic";
 import { Predicate } from "../util/predicate";
 
@@ -21,7 +21,7 @@ class TreeDB<D> {
 
     // --- Chain starters → pipeline ---
     where: {
-        <T>(lens: ($: GetterLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
+        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
     } = (() => {}) as any;
     select: {
         (target: TreeId): TreePipeline<D, "single">;
@@ -52,10 +52,10 @@ class TreeDB<D> {
 }
 
 type LensMeta = {
-    ID: GetterLens<string>;
-    PARENT: GetterLens<string | null>;
-    CHILDREN: GetterLens<string[]>;
-    DEPTH: GetterLens<number>;
+    ID: QueryLens<string>;
+    PARENT: QueryLens<string | null>;
+    CHILDREN: QueryLens<string[]>;
+    DEPTH: QueryLens<number>;
 };
 
 // ============================================================
@@ -92,7 +92,7 @@ interface Terminals<D, C extends Cardinality> {
 interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     // Filtering
     where: {
-        <T>(lens: ($: GetterLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
+        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
     };
 
     // Tree traversal (always produces multi)
@@ -110,7 +110,7 @@ interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     at(index: number): TreePipeline<D, "single">;
 
     // Presentation (preserves cardinality)
-    sort: <T>(lens: ($: PathLens<D> & LensMeta) => PathLens<T>, dir: "asc" | "desc") => TreePipeline<D, C>;
+    sort: <T>(lens: ($: GetterLens<D> & LensMeta) => GetterLens<T>, dir: "asc" | "desc") => TreePipeline<D, C>;
     distinct(): TreePipeline<D, C>;
     slice(start: number, end?: number): TreePipeline<D, C>;
     paginate(page: number, perPage: number): TreePipeline<D, C>;
