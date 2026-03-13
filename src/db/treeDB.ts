@@ -91,9 +91,7 @@ interface Terminals<D, C extends Cardinality> {
 
 interface TreePipeline<D, C extends Cardinality> extends Terminals<D, C> {
     // Filtering
-    where: {
-        <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, C>;
-    };
+    where: <T>(lens: ($: QueryLens<D> & LensMeta & LogicalOps) => Predicate<T> | PredicateResult) => TreePipeline<D, C>;
 
     // Tree traversal (always produces multi)
     ancestors(): TreePipeline<D, "multi">;
