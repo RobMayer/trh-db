@@ -36,7 +36,7 @@ export namespace Lens {
 const LENS = Symbol("lens");
 const PRED = Symbol("pred");
 
-type FilterOp = { type: "where"; predFn: Function } | { type: "filter"; fn: Function } | { type: "slice"; start: number; end?: number };
+type FilterOp = { type: "where"; predFn: Function } | { type: "filter"; fn: Function } | { type: "slice"; start: number; end?: number } | { type: "sort"; args: any[] };
 
 type PathStep =
     | { type: "prop"; key: string | number }
@@ -434,9 +434,9 @@ function createProxy(state: LensState): any {
                             });
                             return keyed.map((e) => e.item);
                         };
-                        // sort is read-only (SelectorLens only) — no path step
-                        if (isEach) return createProxy({ value: (value as any[]).map(sortArr), isEach: true, path, filters: [] });
-                        return createProxy({ value: sortArr(value as any[]), isEach: false, path, filters: [] });
+                        const nextFilters = [...filters, { type: "sort" as const, args }];
+                        if (isEach) return createProxy({ value: (value as any[]).map(sortArr), isEach: true, path, filters: nextFilters });
+                        return createProxy({ value: sortArr(value as any[]), isEach: false, path, filters: nextFilters });
                     };
                 case "slice":
                     return (start: number, end?: number) => {
@@ -522,6 +522,33 @@ function matchingIndices(arr: any[], ops: FilterOp[]): number[] {
                 const s = f.start < 0 ? Math.max(0, indices.length + f.start) : f.start;
                 const e = f.end !== undefined ? (f.end < 0 ? Math.max(0, indices.length + f.end) : f.end) : indices.length;
                 indices = indices.slice(s, e);
+                break;
+            }
+            case "sort": {
+                const args = f.args;
+                if (typeof args[0] === "function" && args.length === 1) {
+                    // Comparator overload
+                    indices.sort((a, b) => args[0](arr[a], arr[b]));
+                } else {
+                    // Accessor + direction overload
+                    const [accessor, dirOrConfig] = args;
+                    const dir = typeof dirOrConfig === "string" ? dirOrConfig : (dirOrConfig?.direction ?? "asc");
+                    const nullish = typeof dirOrConfig === "object" ? (dirOrConfig?.nullish ?? "last") : "last";
+                    const keyed = indices.map((i, idx) => ({ i, key: Lens.get(arr[i], accessor as any), idx }));
+                    keyed.sort((a, b) => {
+                        const aN = a.key === null || a.key === undefined;
+                        const bN = b.key === null || b.key === undefined;
+                        if (aN || bN) {
+                            if (aN && bN) return a.idx - b.idx;
+                            if (aN) return nullish === "first" ? -1 : 1;
+                            return nullish === "first" ? 1 : -1;
+                        }
+                        const cmp = sortCompare(a.key, b.key);
+                        if (cmp !== 0) return dir === "desc" ? -cmp : cmp;
+                        return a.idx - b.idx;
+                    });
+                    indices = keyed.map((e) => e.i);
+                }
                 break;
             }
         }

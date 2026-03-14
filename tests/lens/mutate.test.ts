@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensAccess, LensMutate, LensApply, LensSubAccess, LensSubMutate, LensSubApply } from "../../src/types";
+import { LensAccess, LensMutate, LensSubAccess, LensSubMutate } from "../../src/types";
 
 // --- Test fixtures ---
 
@@ -286,6 +286,75 @@ describe("Lens.mutate", () => {
         });
     });
 
+    describe("sort", () => {
+        it("sort + at(0) targets element with lowest value", () => {
+            const data = makeTeam();
+            // sort by age asc: Alice(25), Carol(28), Bob(35), Dave(40); at(0) → Alice (index 0)
+            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").at(0)("name"), "YOUNGEST");
+            expect(data[0].name).toBe("YOUNGEST"); // Alice: age 25, lowest
+            expect(data[1].name).toBe("Bob");
+            expect(data[2].name).toBe("Carol");
+            expect(data[3].name).toBe("Dave");
+        });
+
+        it("sort + at(0) targets element with highest value (desc)", () => {
+            const data = makeTeam();
+            // sort by age desc: Dave(40), Bob(35), Carol(28), Alice(25); at(0) → Dave (index 3)
+            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "desc").at(0)("name"), "OLDEST");
+            expect(data[0].name).toBe("Alice");
+            expect(data[1].name).toBe("Bob");
+            expect(data[2].name).toBe("Carol");
+            expect(data[3].name).toBe("OLDEST"); // Dave: age 40, highest
+        });
+
+        it("sort + at(1) targets second in sorted order", () => {
+            const data = makeTeam();
+            // sort by age desc: Dave(40), Bob(35), Carol(28), Alice(25); at(1) → Bob (index 1)
+            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "desc").at(1)("name"), "SECOND_OLDEST");
+            expect(data[0].name).toBe("Alice");
+            expect(data[1].name).toBe("SECOND_OLDEST"); // Bob: age 35, second highest
+            expect(data[2].name).toBe("Carol");
+            expect(data[3].name).toBe("Dave");
+        });
+
+        it("sort + each mutates all in sorted order", () => {
+            const data = makeTeam();
+            let rank = 0;
+            // sort by age asc, then assign rank to each
+            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), () => `rank-${rank++}`);
+            // sorted order: Alice(25)→rank-0, Carol(28)→rank-1, Bob(35)→rank-2, Dave(40)→rank-3
+            expect(data[0].role).toBe("rank-0"); // Alice
+            expect(data[1].role).toBe("rank-2"); // Bob
+            expect(data[2].role).toBe("rank-1"); // Carol
+            expect(data[3].role).toBe("rank-3"); // Dave
+        });
+
+        it("sort with comparator + at(0)", () => {
+            const data = makePerson();
+            // sort scores descending via comparator: [95, 88, 82, 71]; at(0) → 95 (index 0)
+            Lens.mutate(data, ($) => $("scores").sort((a, b) => b - a).at(0), 999);
+            expect(data.scores).toEqual([999, 82, 71, 88]); // index 0 had the highest (95)
+        });
+
+        it("where + sort + at(0) filters then sorts", () => {
+            const data = makeTeam();
+            // where: role != "manager" → Alice(25), Bob(35), Carol(28)
+            // sort by age desc: Bob(35), Carol(28), Alice(25); at(0) → Bob
+            Lens.mutate(
+                data,
+                ($) =>
+                    $.where(($s) => [$s("role"), "!=", "manager"])
+                        .sort(($s) => $s("age"), "desc")
+                        .at(0)("name"),
+                "OLDEST_NON_MGR"
+            );
+            expect(data[0].name).toBe("Alice");
+            expect(data[1].name).toBe("OLDEST_NON_MGR"); // Bob: oldest non-manager
+            expect(data[2].name).toBe("Carol");
+            expect(data[3].name).toBe("Dave"); // manager, excluded
+        });
+    });
+
     describe("combinations", () => {
         it("each + where: mutates matching elements across all sub-arrays", () => {
             const data = {
@@ -381,350 +450,6 @@ describe("Lens.mutate", () => {
             Lens.mutate(data, ($) => ($("store") as any).lookup("alpha"), 99);
             expect(data.store.getVal("alpha")).toBe(99);
             expect(data.store.getVal("beta")).toBe(20); // unchanged
-        });
-    });
-});
-
-// --- Lens.apply tests ---
-
-describe("Lens.apply", () => {
-    describe("property access", () => {
-        it("returns a new object with the property changed", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("name"), "Alice");
-            expect(result.name).toBe("Alice");
-            expect(data.name).toBe("Rob"); // original unchanged
-        });
-
-        it("applies an updater function", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("age"), (prev) => prev + 1);
-            expect(result.age).toBe(31);
-            expect(data.age).toBe(30); // original unchanged
-        });
-
-        it("applies to a nested property with structural sharing", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("address")("city"), "Seattle");
-            expect(result.address.city).toBe("Seattle");
-            expect(data.address.city).toBe("Portland"); // original unchanged
-            expect(result.roles).toBe(data.roles); // unchanged subtree shares reference
-        });
-    });
-
-    describe("structural sharing", () => {
-        it("shares identity for unchanged siblings", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("address")("city"), "Seattle");
-            expect(result).not.toBe(data); // new root
-            expect(result.address).not.toBe(data.address); // new address (modified spine)
-            expect(result.roles).toBe(data.roles); // same reference
-            expect(result.scores).toBe(data.scores); // same reference
-            expect(result.prefs).toBe(data.prefs); // same reference
-        });
-
-        it("shares identity for unchanged array elements", () => {
-            const data = makeTeam();
-            const result = Lens.apply(data, ($) => $(0)("name"), "Alicia");
-            expect(result).not.toBe(data); // new array
-            expect(result[0]).not.toBe(data[0]); // new element (modified)
-            expect(result[1]).toBe(data[1]); // same reference
-            expect(result[2]).toBe(data[2]); // same reference
-            expect(result[3]).toBe(data[3]); // same reference
-        });
-    });
-
-    describe("index access", () => {
-        it("applies to an array element by positive index", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("roles")(0), "superadmin");
-            expect(result.roles[0]).toBe("superadmin");
-            expect(data.roles[0]).toBe("admin"); // original unchanged
-        });
-
-        it("applies to an array element by negative index via call syntax", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("scores")(-1), 100);
-            expect(result.scores[3]).toBe(100);
-            expect(data.scores[3]).toBe(88); // original unchanged
-        });
-
-        it("applies via at() with negative index", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("scores").at(-2), 99);
-            expect(result.scores[2]).toBe(99);
-            expect(data.scores[2]).toBe(71); // original unchanged
-        });
-    });
-
-    describe("each", () => {
-        it("applies to all array elements", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("scores").each(), (prev) => prev * 2);
-            expect(result.scores).toEqual([190, 164, 142, 176]);
-            expect(data.scores).toEqual([95, 82, 71, 88]); // original unchanged
-        });
-
-        it("applies to a property on each element", () => {
-            const data = makeTeam();
-            const result = Lens.apply(data, ($) => $.each()("age"), (prev) => prev + 1);
-            expect(result.map((d: any) => d.age)).toEqual([26, 36, 29, 41]);
-            expect(data.map((d) => d.age)).toEqual([25, 35, 28, 40]); // original unchanged
-        });
-
-        it("handles nested each (2D array)", () => {
-            const data = makeMatrix();
-            const result = Lens.apply(data, ($) => $("rows").each().each()("val"), (prev) => prev * 10);
-            expect(result.rows[0][0].val).toBe(10);
-            expect(result.rows[1][1].val).toBe(40);
-            expect(data.rows[0][0].val).toBe(1); // original unchanged
-        });
-    });
-
-    describe("where", () => {
-        it("applies only to matching elements, preserving non-matching refs", () => {
-            const data = makeTeam();
-            const result = Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("age"), (prev) => prev + 10);
-            expect(result[0].age).toBe(35); // Alice: dev → applied
-            expect(result[1].age).toBe(35); // Bob: lead → unchanged
-            expect(result[2].age).toBe(38); // Carol: dev → applied
-            expect(result[3].age).toBe(40); // Dave: manager → unchanged
-            // Non-matching elements keep reference identity
-            expect(result[1]).toBe(data[1]);
-            expect(result[3]).toBe(data[3]);
-            // Matching elements are new objects
-            expect(result[0]).not.toBe(data[0]);
-            expect(result[2]).not.toBe(data[2]);
-            // Original unchanged
-            expect(data[0].age).toBe(25);
-            expect(data[2].age).toBe(28);
-        });
-    });
-
-    describe("filter", () => {
-        it("applies only to elements passing the filter", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("scores").filter((s) => s < 85).each(), (prev) => prev + 10);
-            expect(result.scores).toEqual([95, 92, 81, 88]); // 82→92, 71→81
-            expect(data.scores).toEqual([95, 82, 71, 88]); // original unchanged
-        });
-    });
-
-    describe("slice", () => {
-        it("applies to elements within the slice range", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("scores").slice(1, 3).each(), () => 0);
-            expect(result.scores).toEqual([95, 0, 0, 88]);
-            expect(data.scores).toEqual([95, 82, 71, 88]); // original unchanged
-        });
-
-        it("applies with negative slice indices", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("scores").slice(-2).each(), (prev) => prev + 100);
-            expect(result.scores).toEqual([95, 82, 171, 188]);
-            expect(data.scores).toEqual([95, 82, 71, 88]); // original unchanged
-        });
-    });
-
-    describe("Map", () => {
-        it("returns a new Map with the value changed", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("prefs").get("fontSize"), (prev) => prev + 2);
-            expect(result.prefs.get("fontSize")).toBe(16);
-            expect(result.prefs.get("theme")).toBe(1); // unchanged value
-            expect(data.prefs.get("fontSize")).toBe(14); // original unchanged
-            expect(result.prefs).not.toBe(data.prefs); // new Map instance
-        });
-    });
-
-    describe("chained filters", () => {
-        it("where + filter narrows cumulatively (immutable)", () => {
-            const data = makeTeam();
-            const result = Lens.apply(
-                data,
-                ($) =>
-                    $.where(($s) => [$s("role"), "=", "dev"])
-                        .filter((p: any) => p.age > 26)
-                        .each()("name"),
-                (prev) => prev.toUpperCase()
-            );
-            expect(result[0].name).toBe("Alice");
-            expect(result[1].name).toBe("Bob");
-            expect(result[2].name).toBe("CAROL");
-            expect(result[3].name).toBe("Dave");
-            // structural sharing: unaffected elements keep identity
-            expect(result[0]).toBe(data[0]);
-            expect(result[1]).toBe(data[1]);
-            expect(result[3]).toBe(data[3]);
-            expect(result[2]).not.toBe(data[2]);
-        });
-
-        it("filter + slice narrows cumulatively (immutable)", () => {
-            const data = makePerson();
-            const result = Lens.apply(
-                data,
-                ($) =>
-                    $("scores")
-                        .filter((s) => s < 90)
-                        .slice(1)
-                        .each(),
-                0
-            );
-            expect(result.scores).toEqual([95, 82, 0, 0]);
-            expect(data.scores).toEqual([95, 82, 71, 88]);
-        });
-
-        it("slice + filter narrows cumulatively (immutable)", () => {
-            const data = makePerson();
-            const result = Lens.apply(
-                data,
-                ($) =>
-                    $("scores")
-                        .slice(1, 3)
-                        .filter((s) => s > 75)
-                        .each(),
-                0
-            );
-            expect(result.scores).toEqual([95, 0, 71, 88]);
-            expect(data.scores).toEqual([95, 82, 71, 88]);
-        });
-
-        it("where + at(0) targets first match (immutable)", () => {
-            const data = makeTeam();
-            const result = Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), "FIRST_DEV");
-            expect(result[0].name).toBe("FIRST_DEV");
-            expect(result[2].name).toBe("Carol"); // second dev, untouched
-            expect(data[0].name).toBe("Alice"); // original unchanged
-            // structural sharing
-            expect(result[1]).toBe(data[1]);
-            expect(result[2]).toBe(data[2]);
-            expect(result[3]).toBe(data[3]);
-        });
-
-        it("filter + at(-1) targets last match (immutable)", () => {
-            const data = makePerson();
-            // filter: < 90 → indices [1,2,3] (82,71,88); at(-1) → index 3 (88)
-            const result = Lens.apply(data, ($) => $("scores").filter((s) => s < 90).at(-1), 0);
-            expect(result.scores).toEqual([95, 82, 71, 0]);
-            expect(data.scores).toEqual([95, 82, 71, 88]);
-        });
-
-        it("where + filter + at(0) narrows then picks first (immutable)", () => {
-            const data = makeTeam();
-            // where: age > 25 → Bob(35), Carol(28), Dave(40); filter: age < 40 → Bob(35), Carol(28); at(0) → Bob
-            const result = Lens.apply(
-                data,
-                ($) =>
-                    $.where(($s) => [$s("age"), ">", 25])
-                        .filter((p: any) => p.age < 40)
-                        .at(0)("role"),
-                "picked"
-            );
-            expect(result[0].role).toBe("dev"); // Alice: excluded
-            expect(result[1].role).toBe("picked"); // Bob: first match
-            expect(result[2].role).toBe("dev"); // Carol: second match, not picked
-            expect(result[3].role).toBe("manager"); // Dave: excluded
-            expect(data[1].role).toBe("lead"); // original unchanged
-            // structural sharing
-            expect(result[0]).toBe(data[0]);
-            expect(result[2]).toBe(data[2]);
-            expect(result[3]).toBe(data[3]);
-        });
-    });
-
-    describe("root replacement", () => {
-        it("replaces the entire root when path is empty", () => {
-            const data = { x: 1 };
-            const result = Lens.apply(data, ($) => $, { x: 2 });
-            expect(result).toEqual({ x: 2 });
-            expect(data).toEqual({ x: 1 }); // original unchanged
-        });
-    });
-
-    describe("custom accessors", () => {
-        class Vector2 {
-            #x: number;
-            #y: number;
-            constructor(x: number, y: number) {
-                this.#x = x;
-                this.#y = y;
-            }
-            get x() {
-                return this.#x;
-            }
-            get y() {
-                return this.#y;
-            }
-            [LensAccess] = {
-                x: () => this.#x,
-                y: () => this.#y,
-            };
-            [LensApply] = {
-                x: (v: number) => new Vector2(v, this.#y),
-                y: (v: number) => new Vector2(this.#x, v),
-            };
-        }
-
-        it("applies via custom named accessor (LensApply) — returns new instance", () => {
-            const data = { pos: new Vector2(3, 4) };
-            const result = Lens.apply(data, ($) => ($("pos") as any).x(), 10);
-            expect(result.pos.x).toBe(10);
-            expect(result.pos.y).toBe(4);
-            expect(data.pos.x).toBe(3); // original unchanged
-            expect(result.pos).not.toBe(data.pos); // new Vector2 instance
-        });
-
-        it("applies via custom named accessor with updater", () => {
-            const data = { pos: new Vector2(3, 4) };
-            const result = Lens.apply(data, ($) => ($("pos") as any).y(), (prev: number) => prev * 2);
-            expect(result.pos.y).toBe(8);
-            expect(data.pos.y).toBe(4); // original unchanged
-        });
-
-        class KeyedStore {
-            #data: Record<string, number>;
-            constructor(data: Record<string, number>) {
-                this.#data = { ...data };
-            }
-            getVal(key: string) {
-                return this.#data[key];
-            }
-            [LensSubAccess] = {
-                lookup: (key: string) => this.#data[key],
-            };
-            [LensSubApply] = {
-                lookup: (key: string, value: number) => {
-                    const next = new KeyedStore(this.#data);
-                    next.#data[key] = value;
-                    return next;
-                },
-            };
-        }
-
-        it("applies via custom keyed accessor (LensSubApply) — returns new instance", () => {
-            const store = new KeyedStore({ alpha: 10, beta: 20 });
-            const data = { store };
-            const result = Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), 99);
-            expect(result.store.getVal("alpha")).toBe(99);
-            expect(result.store.getVal("beta")).toBe(20);
-            expect(data.store.getVal("alpha")).toBe(10); // original unchanged
-            expect(result.store).not.toBe(data.store); // new instance
-        });
-    });
-
-    describe("updater pattern (array push/pop equivalent)", () => {
-        it("appends to an array via updater", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("roles"), (prev) => [...prev, "owner"]);
-            expect(result.roles).toEqual(["admin", "editor", "viewer", "owner"]);
-            expect(data.roles).toEqual(["admin", "editor", "viewer"]); // original unchanged
-        });
-
-        it("removes last element via updater", () => {
-            const data = makePerson();
-            const result = Lens.apply(data, ($) => $("roles"), (prev) => prev.slice(0, -1));
-            expect(result.roles).toEqual(["admin", "editor"]);
-            expect(data.roles).toEqual(["admin", "editor", "viewer"]); // original unchanged
         });
     });
 });

@@ -104,6 +104,8 @@ export type MutatorLens<Target, Chain = Target> = {
               where(pred: ($: SelectorLens<E> & LogicalOps) => Predicate<any> | PredicateResult): MutatorLens<never, Chain>;
               filter(fn: (item: E) => boolean): MutatorLens<never, Chain>;
               slice(start: number, end?: number): MutatorLens<never, Chain>;
+              sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<E>) => SelectorLensOf<R>, dir: SortDirection): MutatorLens<never, Chain>;
+              sort(comparator: (a: E, b: E) => number): MutatorLens<never, Chain>;
           }
         : {}) &
     // Any-object
@@ -150,6 +152,8 @@ export type ApplierLens<Target, Chain = Target> = {
               where(pred: ($: SelectorLens<E> & LogicalOps) => Predicate<any> | PredicateResult): ApplierLens<never, Chain>;
               filter(fn: (item: E) => boolean): ApplierLens<never, Chain>;
               slice(start: number, end?: number): ApplierLens<never, Chain>;
+              sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<E>) => SelectorLensOf<R>, dir: SortDirection): ApplierLens<never, Chain>;
+              sort(comparator: (a: E, b: E) => number): ApplierLens<never, Chain>;
           }
         : {}) &
     // Any-object
