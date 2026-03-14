@@ -15,6 +15,19 @@ export type ListOf<D> = Set<D> | D[];
 export type ListOr<D> = D | Set<D> | D[];
 export type Updater<T, C> = T | ((prev: T, context: C) => T);
 
+type Primitive = string | number | boolean | bigint | symbol | null | undefined;
+export type DeepReadonly<T> = T extends Primitive
+    ? T
+    : T extends Function
+      ? T
+      : T extends ReadonlyArray<infer U>
+        ? ReadonlyArray<DeepReadonly<U>>
+        : T extends ReadonlyMap<infer K, infer V>
+          ? ReadonlyMap<K, DeepReadonly<V>>
+          : T extends ReadonlySet<infer U>
+            ? ReadonlySet<DeepReadonly<U>>
+            : { readonly [K in keyof T]: DeepReadonly<T[K]> };
+
 export type TreeId = string;
 export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
 export type TreeItemOf<D> = { id: TreeId; parent: TreeId | null; children: TreeId[]; data: D };

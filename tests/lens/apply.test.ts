@@ -404,6 +404,114 @@ describe("Lens.apply", () => {
         });
     });
 
+    describe("edge cases", () => {
+        it("where matching nothing is a no-op (all refs preserved)", () => {
+            const data = makeTeam();
+            const result = Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "ceo"]).each()("name"), "NOBODY");
+            expect(result[0].name).toBe("Alice");
+            expect(result[1].name).toBe("Bob");
+            expect(result[2].name).toBe("Carol");
+            expect(result[3].name).toBe("Dave");
+            // When nothing matches, all elements keep identity
+            expect(result[0]).toBe(data[0]);
+            expect(result[1]).toBe(data[1]);
+            expect(result[2]).toBe(data[2]);
+            expect(result[3]).toBe(data[3]);
+        });
+
+        it("where matching everything behaves like plain each", () => {
+            const data = makeTeam();
+            const result = Lens.apply(data, ($) => $.where(($s) => [$s("age"), ">", 0]).each()("role"), "matched");
+            expect(result[0].role).toBe("matched");
+            expect(result[1].role).toBe("matched");
+            expect(result[2].role).toBe("matched");
+            expect(result[3].role).toBe("matched");
+            expect(data[0].role).toBe("dev"); // original unchanged
+        });
+
+        it("filter on empty array is a no-op", () => {
+            const data = { items: [] as number[] };
+            const result = Lens.apply(data, ($) => $("items").filter((x) => x > 0).each(), 999);
+            expect(result.items).toEqual([]);
+        });
+
+        it("each on empty array is a no-op", () => {
+            const data = { items: [] as number[] };
+            const result = Lens.apply(data, ($) => $("items").each(), 999);
+            expect(result.items).toEqual([]);
+        });
+
+        it("sort + slice chains correctly (immutable)", () => {
+            const data = makeTeam();
+            // sort by age desc: Dave(40), Bob(35), Carol(28), Alice(25); slice(0,2) → Dave, Bob
+            const result = Lens.apply(
+                data,
+                ($) =>
+                    $.sort(($s) => $s("age"), "desc")
+                        .slice(0, 2)
+                        .each()("role"),
+                "top2"
+            );
+            expect(result[0].role).toBe("dev"); // Alice: 4th in sorted order
+            expect(result[1].role).toBe("top2"); // Bob: 2nd oldest
+            expect(result[2].role).toBe("dev"); // Carol: 3rd in sorted order
+            expect(result[3].role).toBe("top2"); // Dave: 1st oldest
+            expect(data[1].role).toBe("lead"); // original unchanged
+            expect(data[3].role).toBe("manager"); // original unchanged
+            // structural sharing for untouched
+            expect(result[0]).toBe(data[0]);
+            expect(result[2]).toBe(data[2]);
+        });
+
+        it("each + sort + at targets per sub-array (immutable)", () => {
+            const data = {
+                groups: [
+                    [
+                        { name: "a", score: 10 },
+                        { name: "b", score: 30 },
+                        { name: "c", score: 20 },
+                    ],
+                    [
+                        { name: "d", score: 50 },
+                        { name: "e", score: 40 },
+                    ],
+                ],
+            };
+            // In each sub-array, sort by score desc, pick at(0) → highest scorer per group
+            const result = Lens.apply(data, ($) => $("groups").each().sort(($s) => $s("score"), "desc").at(0)("name"), "BEST");
+            expect(result.groups[0][0].name).toBe("a"); // score 10, not highest
+            expect(result.groups[0][1].name).toBe("BEST"); // score 30, highest in group 0
+            expect(result.groups[0][2].name).toBe("c"); // score 20
+            expect(result.groups[1][0].name).toBe("BEST"); // score 50, highest in group 1
+            expect(result.groups[1][1].name).toBe("e"); // score 40
+            // originals unchanged
+            expect(data.groups[0][1].name).toBe("b");
+            expect(data.groups[1][0].name).toBe("d");
+        });
+
+        it("root-is-array direct index apply", () => {
+            const data = [10, 20, 30];
+            const result = Lens.apply(data, ($) => $(1), 99);
+            expect(result).toEqual([10, 99, 30]);
+            expect(data).toEqual([10, 20, 30]); // original unchanged
+        });
+
+        it("root-is-array with where + each (immutable)", () => {
+            const data = [
+                { name: "a", active: true },
+                { name: "b", active: false },
+                { name: "c", active: true },
+            ];
+            const result = Lens.apply(data, ($) => $.where(($s) => [$s("active"), "=", true]).each()("name"), (prev) => prev.toUpperCase());
+            expect(result[0].name).toBe("A");
+            expect(result[1].name).toBe("b"); // inactive, unchanged
+            expect(result[2].name).toBe("C");
+            expect(data[0].name).toBe("a"); // original unchanged
+            // structural sharing
+            expect(result[1]).toBe(data[1]);
+        });
+    });
+
     describe("updater pattern (array push/pop equivalent)", () => {
         it("appends to an array via updater", () => {
             const data = makePerson();

@@ -1,5 +1,5 @@
 import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf } from "./types";
-import { Compare, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply } from "../../types";
+import { Compare, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply, DeepReadonly } from "../../types";
 
 //#region - Public API
 
@@ -19,7 +19,7 @@ export namespace Lens {
         doMutate(data, path, 0, updater as any);
     };
 
-    export const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: R) => R)): D => {
+    export const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: DeepReadonly<R>) => R)): D => {
         const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
         const result = lens(proxy as any);
         const { path } = (result as any)[LENS] as LensState;

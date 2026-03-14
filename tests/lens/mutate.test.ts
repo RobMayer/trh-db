@@ -385,6 +385,102 @@ describe("Lens.mutate", () => {
         });
     });
 
+    describe("edge cases", () => {
+        it("mutate root with empty path is a no-op", () => {
+            const data = makePerson();
+            Lens.mutate(data, ($) => $, { name: "REPLACED" } as any);
+            expect(data.name).toBe("Rob"); // can't replace root by reference
+        });
+
+        it("where matching nothing is a no-op", () => {
+            const data = makeTeam();
+            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "ceo"]).each()("name"), "NOBODY");
+            expect(data[0].name).toBe("Alice");
+            expect(data[1].name).toBe("Bob");
+            expect(data[2].name).toBe("Carol");
+            expect(data[3].name).toBe("Dave");
+        });
+
+        it("where matching everything behaves like plain each", () => {
+            const data = makeTeam();
+            Lens.mutate(data, ($) => $.where(($s) => [$s("age"), ">", 0]).each()("role"), "matched");
+            expect(data[0].role).toBe("matched");
+            expect(data[1].role).toBe("matched");
+            expect(data[2].role).toBe("matched");
+            expect(data[3].role).toBe("matched");
+        });
+
+        it("filter on empty array is a no-op", () => {
+            const data = { items: [] as number[] };
+            Lens.mutate(data, ($) => $("items").filter((x) => x > 0).each(), 999);
+            expect(data.items).toEqual([]);
+        });
+
+        it("each on empty array is a no-op", () => {
+            const data = { items: [] as number[] };
+            Lens.mutate(data, ($) => $("items").each(), 999);
+            expect(data.items).toEqual([]);
+        });
+
+        it("sort + slice chains correctly", () => {
+            const data = makeTeam();
+            // sort by age desc: Dave(40), Bob(35), Carol(28), Alice(25); slice(0,2) → Dave, Bob
+            Lens.mutate(
+                data,
+                ($) =>
+                    $.sort(($s) => $s("age"), "desc")
+                        .slice(0, 2)
+                        .each()("role"),
+                "top2"
+            );
+            expect(data[0].role).toBe("dev"); // Alice: 4th in sorted order
+            expect(data[1].role).toBe("top2"); // Bob: 2nd oldest
+            expect(data[2].role).toBe("dev"); // Carol: 3rd in sorted order
+            expect(data[3].role).toBe("top2"); // Dave: 1st oldest
+        });
+
+        it("each + sort + at targets per sub-array", () => {
+            const data = {
+                groups: [
+                    [
+                        { name: "a", score: 10 },
+                        { name: "b", score: 30 },
+                        { name: "c", score: 20 },
+                    ],
+                    [
+                        { name: "d", score: 50 },
+                        { name: "e", score: 40 },
+                    ],
+                ],
+            };
+            // In each sub-array, sort by score desc, pick at(0) → highest scorer per group
+            Lens.mutate(data, ($) => $("groups").each().sort(($s) => $s("score"), "desc").at(0)("name"), "BEST");
+            expect(data.groups[0][0].name).toBe("a"); // score 10, not highest
+            expect(data.groups[0][1].name).toBe("BEST"); // score 30, highest in group 0
+            expect(data.groups[0][2].name).toBe("c"); // score 20
+            expect(data.groups[1][0].name).toBe("BEST"); // score 50, highest in group 1
+            expect(data.groups[1][1].name).toBe("e"); // score 40
+        });
+
+        it("root-is-array direct index mutate", () => {
+            const data = [10, 20, 30];
+            Lens.mutate(data, ($) => $(1), 99);
+            expect(data).toEqual([10, 99, 30]);
+        });
+
+        it("root-is-array with where + each", () => {
+            const data = [
+                { name: "a", active: true },
+                { name: "b", active: false },
+                { name: "c", active: true },
+            ];
+            Lens.mutate(data, ($) => $.where(($s) => [$s("active"), "=", true]).each()("name"), (prev) => prev.toUpperCase());
+            expect(data[0].name).toBe("A");
+            expect(data[1].name).toBe("b"); // inactive, unchanged
+            expect(data[2].name).toBe("C");
+        });
+    });
+
     describe("custom accessors", () => {
         class Vector2 {
             #x: number;
