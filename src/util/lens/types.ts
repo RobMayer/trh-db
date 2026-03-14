@@ -2,8 +2,8 @@ import { LensSubAccess, LensAccess, AllStringKeys, LensSubSelect, LensSelect, Sa
 import { LogicalOps, PredicateResult } from "../logic";
 import { Predicate } from "../predicate";
 
-// Eval = the type this lens evaluates to (what predicates see, what get() returns)
-// Chain = the type used for property/index chaining (defaults to Eval)
+// SelectorLens: Eval = the type this lens evaluates to (what get() returns); Chain = navigation type (defaults to Eval)
+// MutatorLens/ApplierLens: Target = the type the updater receives; Chain = navigation type (defaults to Target)
 
 export type SortDirection = "asc" | "desc" | { direction: "asc" | "desc"; nullish?: "first" | "last" };
 
@@ -88,28 +88,28 @@ export type SelectorLens<Eval, Chain = Eval> = {
 
 //#endregion
 
-// reserved for future use
+// Target = the type the updater/value receives (what BRAND resolves to)
+// Chain = the type used for property/index chaining (defaults to Target)
+// where/filter/slice set Target to `never` to prevent terminal use — .each() or .at() restores it
 
-export type MutatorLens<Eval, Chain = Eval> = {
-    readonly [BRAND]: Eval;
+export type MutatorLens<Target, Chain = Target> = {
+    readonly [BRAND]: Target;
 } &
     // Array
     (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
         ? {
-              (index: number): MutatorLens<WithCardnality<Eval, Chain, E>, E>;
-              at(index: number): MutatorLens<WithCardnality<Eval, Chain, E>, E>;
-              each(): MutatorLens<E[], E>;
-              where(pred: ($: SelectorLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): MutatorLens<Eval, Chain>;
-              filter(fn: (item: ElementOf<Chain>) => boolean): MutatorLens<Eval, Chain>;
-              slice(start: number, end?: number): MutatorLens<Eval, Chain>;
-              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<ElementOf<Chain>>) => SelectorLensOf<R>, dir: SortDirection): MutatorLens<Eval, Chain>;
-              // sort(comparator: (a: E, b: E) => number): MutatorLens<Eval, Chain>;
+              (index: number): MutatorLens<WithCardnality<Target, Chain, E>, E>;
+              at(index: number): MutatorLens<WithCardnality<Target, Chain, E>, E>;
+              each(): MutatorLens<E, E>;
+              where(pred: ($: SelectorLens<E> & LogicalOps) => Predicate<any> | PredicateResult): MutatorLens<never, Chain>;
+              filter(fn: (item: E) => boolean): MutatorLens<never, Chain>;
+              slice(start: number, end?: number): MutatorLens<never, Chain>;
           }
         : {}) &
     // Any-object
     (NonNullable<Chain> extends object
         ? {
-              <Key extends AllStringKeys<Chain>>(key: Key): MutatorLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+              <Key extends AllStringKeys<Chain>>(key: Key): MutatorLens<WithCardnality<Target, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
           }
         : {}) &
     // Set
@@ -121,43 +121,41 @@ export type MutatorLens<Eval, Chain = Eval> = {
     // Map
     (NonNullable<Chain> extends Map<infer MK, infer MV>
         ? {
-              get(key: MK): MutatorLens<WithCardnality<Eval, Chain, MV>, MV>;
+              get(key: MK): MutatorLens<WithCardnality<Target, Chain, MV>, MV>;
               // add/remove? -- maybe as terminal calls?
           }
         : {}) &
     // Custom (keyed)
     (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => MutatorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => MutatorLens<WithCardnality<Target, Chain, VT>, VT> : never;
           }
         : {}) &
     // Custom (named property)
     (NonNullable<Chain> extends { [LensAccess]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => MutatorLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => MutatorLens<WithCardnality<Target, Chain, VT>, VT> : never;
           }
         : {});
 
-export type ApplierLens<Eval, Chain = Eval> = {
-    readonly [BRAND]: Eval;
+export type ApplierLens<Target, Chain = Target> = {
+    readonly [BRAND]: Target;
 } &
     // Array
     (NonNullable<Chain> extends (infer E)[] | readonly (infer E)[]
         ? {
-              (index: number): ApplierLens<WithCardnality<Eval, Chain, E>, E>;
-              at(index: number): ApplierLens<WithCardnality<Eval, Chain, E>, E>;
-              each(): ApplierLens<E[], E>;
-              where(pred: ($: SelectorLens<ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): ApplierLens<Eval, Chain>;
-              filter(fn: (item: ElementOf<Chain>) => boolean): ApplierLens<Eval, Chain>;
-              slice(start: number, end?: number): ApplierLens<Eval, Chain>;
-              // sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: SelectorLens<ElementOf<Chain>>) => SelectorLensOf<R>, dir: SortDirection): ApplierLens<Eval, Chain>;
-              // sort(comparator: (a: E, b: E) => number): ApplierLens<Eval, Chain>;
+              (index: number): ApplierLens<WithCardnality<Target, Chain, E>, E>;
+              at(index: number): ApplierLens<WithCardnality<Target, Chain, E>, E>;
+              each(): ApplierLens<E, E>;
+              where(pred: ($: SelectorLens<E> & LogicalOps) => Predicate<any> | PredicateResult): ApplierLens<never, Chain>;
+              filter(fn: (item: E) => boolean): ApplierLens<never, Chain>;
+              slice(start: number, end?: number): ApplierLens<never, Chain>;
           }
         : {}) &
     // Any-object
     (NonNullable<Chain> extends object
         ? {
-              <Key extends AllStringKeys<Chain>>(key: Key): ApplierLens<WithCardnality<Eval, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
+              <Key extends AllStringKeys<Chain>>(key: Key): ApplierLens<WithCardnality<Target, Chain, SafeLookup<Chain, Key>>, SafeLookup<Chain, Key>>;
           }
         : {}) &
     // Set
@@ -169,20 +167,20 @@ export type ApplierLens<Eval, Chain = Eval> = {
     // Map
     (NonNullable<Chain> extends Map<infer MK, infer MV>
         ? {
-              get(key: MK): ApplierLens<WithCardnality<Eval, Chain, MV>, MV>;
+              get(key: MK): ApplierLens<WithCardnality<Target, Chain, MV>, MV>;
               // add/remove?
           }
         : {}) &
     // Custom (keyed)
     (NonNullable<Chain> extends { [LensSubAccess]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => ApplierLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends (key: infer KT) => infer VT ? (key: KT) => ApplierLens<WithCardnality<Target, Chain, VT>, VT> : never;
           }
         : {}) &
     // Custom (named property)
     (NonNullable<Chain> extends { [LensAccess]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => ApplierLens<WithCardnality<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends () => infer VT ? () => ApplierLens<WithCardnality<Target, Chain, VT>, VT> : never;
           }
         : {});
 
@@ -197,7 +195,7 @@ type WithCardnality<Eval, Chain, NewChain> = [Eval] extends [Chain] ? NewChain :
 declare const BRAND: unique symbol;
 
 export type SelectorLensOf<E> = { readonly [BRAND]: E };
-type MutatorLensOf<E> = { readonly [BRAND]: E };
-type ApplierLensOf<E> = { readonly [BRAND]: E };
+export type MutatorLensOf<E> = { readonly [BRAND]: E };
+export type ApplierLensOf<E> = { readonly [BRAND]: E };
 
 //#endregion
