@@ -1,5 +1,5 @@
 import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf } from "./types";
-import { Compare, Contains, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply, DeepReadonly, LensPathSegment } from "../../types";
+import { Compare, Contains, Equals, TypeOf, SubLensNav, LensNav, DeepReadonly, LensPathSegment } from "../../types";
 
 //#region - Public API
 
@@ -43,7 +43,7 @@ type FilterOp = { type: "where"; predFn: Function } | { type: "filter"; fn: Func
 type PathStep =
     | { type: "prop"; key: string | number }
     | { type: "at"; index: number; filters?: FilterOp[] }
-    | { type: "each"; filters?: FilterOp[] }
+    | { type: "each"; filters?: FilterOp[]; callback?: Function }
     | { type: "mapGet"; key: unknown }
     | { type: "customKeyed"; prop: string; key: unknown }
     | { type: "customNamed"; prop: string };
@@ -53,6 +53,12 @@ type LensState = { value: unknown; isEach: boolean; path: PathStep[]; filters: F
 //#endregion
 
 //#region - Shared helpers
+
+/** If arg is a LENS proxy, extract its value. Otherwise return as-is. */
+const unwrap = (arg: unknown): unknown => {
+    const lens = typeof arg === "function" ? (arg as any)[LENS] : undefined;
+    return lens ? lens.value : arg;
+};
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -319,7 +325,7 @@ function createProxy(state: LensState): any {
     const handler: ProxyHandler<Function> = {
         // $("key") / $(index) — property/index access (supports negative indices on arrays)
         apply(_target, _thisArg, args) {
-            const key = args[0];
+            const key = unwrap(args[0]);
             if (typeof key === "number" && key < 0) {
                 return createProxy({
                     value: isEach ? (value as any[]).map((v: any) => v?.[v.length + key]) : (value as any)?.[(value as any[]).length + key],
@@ -328,7 +334,7 @@ function createProxy(state: LensState): any {
                     filters: [],
                 });
             }
-            return nav((v: any) => (v == null ? undefined : v[key]), { type: "prop", key });
+            return nav((v: any) => (v == null ? undefined : v[key as string | number]), { type: "prop", key: key as string | number });
         },
 
         get(_target, prop) {
@@ -357,16 +363,33 @@ function createProxy(state: LensState): any {
 
                 //#region - Array accessors
                 case "at":
-                    return (index: number) =>
-                        createProxy({
+                    return (rawIndex: number) => {
+                        const index = unwrap(rawIndex) as number;
+                        return createProxy({
                             value: isEach ? (value as any[]).map((v: any) => v?.[index < 0 ? v.length + index : index]) : (value as any)?.[index < 0 ? (value as any[]).length + index : index],
                             isEach,
                             path: [...path, { type: "at" as const, index, filters: foldFilters() }],
                             filters: [],
                         });
+                    };
                 case "each":
-                    return () => {
-                        const nextPath = [...path, { type: "each" as const, filters: foldFilters() }];
+                    return (callback?: Function) => {
+                        const filters = foldFilters();
+                        if (callback) {
+                            const arr = isEach ? (value as any[]).flat(1) : (value as any[]);
+                            const mapped = (arr ?? []).map((item: any) => {
+                                const elProxy = createProxy({ value: item, isEach: false, path: [], filters: [] });
+                                const result = callback(elProxy);
+                                return (result as any)[LENS].value;
+                            });
+                            return createProxy({
+                                value: mapped,
+                                isEach: true,
+                                path: [...path, { type: "each" as const, filters, callback }],
+                                filters: [],
+                            });
+                        }
+                        const nextPath = [...path, { type: "each" as const, filters }];
                         if (isEach) return createProxy({ value: (value as any[]).flat(1), isEach: true, path: nextPath, filters: [] });
                         return createProxy({ value, isEach: true, path: nextPath, filters: [] });
                     };
@@ -381,9 +404,9 @@ function createProxy(state: LensState): any {
 
                 //#region - Map / Set
                 case "get":
-                    return (key: any) => nav((v: any) => v?.get?.(key), { type: "mapGet", key });
+                    return (rawKey: any) => { const key = unwrap(rawKey); return nav((v: any) => v?.get?.(key), { type: "mapGet", key }); };
                 case "has":
-                    return (val: any) => apply((v: any) => v?.has?.(val) ?? false);
+                    return (rawVal: any) => { const val = unwrap(rawVal); return apply((v: any) => v?.has?.(val) ?? false); };
                 //#endregion
 
                 //#region - Filtering (accumulate in state.filters, don't record path steps)
@@ -441,7 +464,9 @@ function createProxy(state: LensState): any {
                         return createProxy({ value: sortArr(value as any[]), isEach: false, path, filters: nextFilters });
                     };
                 case "slice":
-                    return (start: number, end?: number) => {
+                    return (rawStart: number, rawEnd?: number) => {
+                        const start = unwrap(rawStart) as number;
+                        const end = rawEnd !== undefined ? unwrap(rawEnd) as number : undefined;
                         const nextFilters = [...filters, { type: "slice" as const, start, end }];
                         if (isEach) return createProxy({ value: (value as any[]).map((v: any[]) => v.slice(start, end)), isEach: true, path, filters: nextFilters });
                         return createProxy({ value: (value as any[]).slice(start, end), isEach: false, path, filters: nextFilters });
@@ -462,26 +487,32 @@ function createProxy(state: LensState): any {
 
             //#region - Custom accessor dispatch
             if (typeof prop === "string") {
-                // Keyed (LensSubSelect / LensSubAccess)
+                // Keyed (SubLensNav)
                 const keyedDispatch = (v: any): ((key: any) => unknown) | undefined => {
-                    const sub = v?.[LensSubSelect]?.[prop] ?? v?.[LensSubAccess]?.[prop];
-                    return typeof sub === "function" ? sub : undefined;
+                    const handler = v?.[SubLensNav]?.[prop];
+                    return typeof handler === "function" ? (key: any) => handler.call(v, key, "select") : undefined;
                 };
 
                 if (isEach) {
                     const hasAny = (value as any[]).some((v) => keyedDispatch(v));
                     if (hasAny)
-                        return (key: any) =>
-                            createProxy({ value: (value as any[]).map((v) => keyedDispatch(v)?.(key)), isEach: true, path: [...path, { type: "customKeyed" as const, prop, key }], filters: [] });
+                        return (rawKey: any) => {
+                            const key = unwrap(rawKey);
+                            return createProxy({ value: (value as any[]).map((v) => keyedDispatch(v)?.(key)), isEach: true, path: [...path, { type: "customKeyed" as const, prop, key }], filters: [] });
+                        };
                 } else {
                     const fn = keyedDispatch(value);
-                    if (fn) return (key: any) => nav(() => fn(key), { type: "customKeyed", prop, key });
+                    if (fn)
+                        return (rawKey: any) => {
+                            const key = unwrap(rawKey);
+                            return nav(() => fn(key), { type: "customKeyed", prop, key });
+                        };
                 }
 
-                // Named property (LensSelect / LensAccess)
+                // Named property (LensNav)
                 const namedDispatch = (v: any): (() => unknown) | undefined => {
-                    const sub = v?.[LensSelect]?.[prop] ?? v?.[LensAccess]?.[prop];
-                    return typeof sub === "function" ? sub : undefined;
+                    const handler = v?.[LensNav]?.[prop];
+                    return typeof handler === "function" ? () => handler.call(v, "select") : undefined;
                 };
 
                 if (isEach) {
@@ -598,6 +629,24 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             return result;
         }
         case "each": {
+            if (step.callback) {
+                const applyToElement = (item: any, j: number, count: number) => {
+                    const elProxy = createProxy({ value: item, isEach: false, path: [], filters: [] });
+                    const subResult = step.callback!(elProxy);
+                    const subPath = (subResult as any)[LENS].path as PathStep[];
+                    const fullPath = [...subPath, ...steps.slice(next)];
+                    return doApply(item, fullPath, 0, updater, { path: [...ctx.path, seg.idx(j)], index: j, count });
+                };
+                if (step.filters?.length) {
+                    const indices = matchingIndices(current, step.filters);
+                    const result = [...current];
+                    for (let j = 0; j < indices.length; j++) {
+                        result[indices[j]] = applyToElement(current[indices[j]], j, indices.length);
+                    }
+                    return result;
+                }
+                return (current as any[]).map((item: any, j: number) => applyToElement(item, j, current.length));
+            }
             if (step.filters?.length) {
                 const indices = matchingIndices(current, step.filters);
                 const result = [...current];
@@ -617,20 +666,22 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             return map;
         }
         case "customKeyed": {
-            const read = current?.[LensSubAccess]?.[step.prop];
-            const applyFn = current?.[LensSubApply]?.[step.prop];
-            if (read && applyFn) {
+            const handler = current?.[SubLensNav]?.[step.prop];
+            if (handler) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
-                return applyFn.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
+                const readValue = handler.call(current, step.key, "select");
+                const newValue = doApply(readValue, steps, next, updater, childCtx);
+                return handler.call(current, step.key, "apply", newValue) ?? current;
             }
             return current;
         }
         case "customNamed": {
-            const read = current?.[LensAccess]?.[step.prop];
-            const applyFn = current?.[LensApply]?.[step.prop];
-            if (read && applyFn) {
+            const handler = current?.[LensNav]?.[step.prop];
+            if (handler) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
-                return applyFn.call(current, doApply(read.call(current), steps, next, updater, childCtx));
+                const readValue = handler.call(current, "select");
+                const newValue = doApply(readValue, steps, next, updater, childCtx);
+                return handler.call(current, "apply", newValue) ?? current;
             }
             return current;
         }
@@ -665,6 +716,26 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             break;
         }
         case "each": {
+            if (step.callback) {
+                const mutateElement = (arr: any[], i: number, j: number, count: number) => {
+                    const elProxy = createProxy({ value: arr[i], isEach: false, path: [], filters: [] });
+                    const subResult = step.callback!(elProxy);
+                    const subPath = (subResult as any)[LENS].path as PathStep[];
+                    const fullPath = [...subPath, ...steps.slice(next)];
+                    doMutate(arr[i], fullPath, 0, updater, { path: [...ctx.path, seg.idx(i)], index: j, count });
+                };
+                if (step.filters?.length) {
+                    const indices = matchingIndices(current, step.filters);
+                    for (let j = 0; j < indices.length; j++) {
+                        mutateElement(current, indices[j], j, indices.length);
+                    }
+                } else {
+                    for (let i = 0; i < current.length; i++) {
+                        mutateElement(current, i, i, current.length);
+                    }
+                }
+                break;
+            }
             if (step.filters?.length) {
                 const indices = matchingIndices(current, step.filters);
                 for (let j = 0; j < indices.length; j++) {
@@ -686,22 +757,22 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             break;
         }
         case "customKeyed": {
-            const read = current?.[LensSubAccess]?.[step.prop];
-            const write = current?.[LensSubMutate]?.[step.prop];
-            if (read && write) {
+            const handler = current?.[SubLensNav]?.[step.prop];
+            if (handler) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
-                if (atLeaf) write.call(current, step.key, updater(read.call(current, step.key), ctx.index, childCtx));
-                else write.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
+                const readValue = handler.call(current, step.key, "select");
+                if (atLeaf) handler.call(current, step.key, "mutate", updater(readValue, ctx.index, childCtx));
+                else handler.call(current, step.key, "mutate", doApply(readValue, steps, next, updater, childCtx));
             }
             break;
         }
         case "customNamed": {
-            const read = current?.[LensAccess]?.[step.prop];
-            const write = current?.[LensMutate]?.[step.prop];
-            if (read && write) {
+            const handler = current?.[LensNav]?.[step.prop];
+            if (handler) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
-                if (atLeaf) write.call(current, updater(read.call(current), ctx.index, childCtx));
-                else write.call(current, doApply(read.call(current), steps, next, updater, childCtx));
+                const readValue = handler.call(current, "select");
+                if (atLeaf) handler.call(current, "mutate", updater(readValue, ctx.index, childCtx));
+                else handler.call(current, "mutate", doApply(readValue, steps, next, updater, childCtx));
             }
             break;
         }

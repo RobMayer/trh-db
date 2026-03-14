@@ -66,17 +66,8 @@ export const Contains = Symbol();
 export const Equals = Symbol();
 export const TypeOf = Symbol();
 
-export const LensAccess = Symbol();
-export const LensSubAccess = Symbol();
-
-export const LensSelect = Symbol();
-export const LensSubSelect = Symbol();
-
-export const LensMutate = Symbol();
-export const LensSubMutate = Symbol();
-
-export const LensApply = Symbol();
-export const LensSubApply = Symbol();
+export const LensNav = Symbol();
+export const SubLensNav = Symbol();
 
 export interface Comparable {
     [Compare]: (other: unknown) => number; // -1, 0, 1
@@ -94,54 +85,16 @@ export interface Typeable {
     [TypeOf]: () => string;
 }
 
-// sub-records
+// Custom lens accessors — named (no key param) and keyed (takes key param)
 
-export interface LensSubAccessible<T extends { [method: string]: [any, any] }> {
-    [LensSubAccess]: {
-        [M in keyof T]: (key: T[M][0]) => T[M][1];
+export interface LensNavigable<T extends { [method: string]: any }> {
+    [LensNav]: {
+        [M in keyof T]: (hint: "select" | "mutate" | "apply", value?: T[M]) => any;
     };
 }
 
-export interface LensSubSelectable<T extends { [method: string]: [any, any] }> {
-    [LensSubSelect]: {
-        [M in keyof T]: (key: T[M][0]) => T[M][1];
-    };
-}
-
-export interface LensSubMutable<T extends { [method: string]: [any, any] }> extends LensSubAccessible<T> {
-    [LensSubMutate]: {
-        [M in keyof T]: (key: T[M][0], value: T[M][1]) => void;
-    };
-}
-
-export interface LensSubApplicable<T extends { [method: string]: [any, any] }> extends LensSubAccessible<T> {
-    [LensSubApply]: {
-        [M in keyof T]: (key: T[M][0], value: T[M][1]) => this;
-    };
-}
-
-// property
-
-export interface LensSelectable<T extends { [method: string]: any }> {
-    [LensSelect]: {
-        [M in keyof T]: () => T[M];
-    };
-}
-
-export interface LensAccessible<T extends { [method: string]: any }> {
-    [LensAccess]: {
-        [M in keyof T]: () => T[M];
-    };
-}
-
-export interface LensApplicable<T extends { [method: string]: any }> extends LensAccessible<T> {
-    [LensApply]: {
-        [M in keyof T]: (value: T[M]) => this;
-    };
-}
-
-export interface LensMutable<T extends { [method: string]: any }> extends LensAccessible<T> {
-    [LensMutate]: {
-        [M in keyof T]: (value: T[M]) => void; // void?
+export interface SubLensNavigable<T extends { [method: string]: [any, any] }> {
+    [SubLensNav]: {
+        [M in keyof T]: (key: T[M][0], hint: "select" | "mutate" | "apply", value?: T[M][1]) => any;
     };
 }

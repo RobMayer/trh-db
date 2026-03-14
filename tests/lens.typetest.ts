@@ -1,5 +1,5 @@
-import { LensSubAccessible, LensSubAccess, LensSubSelectable, LensSubSelect } from "../src/types";
-import { SelectorLens } from "../src/util/lens/types";
+import { SubLensNavigable, SubLensNav } from "../src/types";
+import { DataLens, SelectorLens, MutatorLensOf, ApplierLensOf } from "../src/util/lens/types";
 
 // ============================================================
 // Test Data Shapes
@@ -83,14 +83,11 @@ const nu_label: SelectorLens<string | undefined> = nu$("meta")("label");
 // Optional Field Support
 // ============================================================
 
-class Example implements LensSubSelectable<{ link: [string, string]; node: [string, number]; has: [string, boolean] }> {
-    link = (k: string) => "hi";
-    node = (k: string) => 0;
-    has = (k: string) => false;
-    [LensSubSelect] = {
-        link: this.link,
-        node: this.node,
-        has: this.has,
+class Example implements SubLensNavigable<{ link: [string, string]; node: [string, number]; has: [string, boolean] }> {
+    [SubLensNav] = {
+        link: (key: string, hint: string, value?: string) => { if (hint === "select") return "hi"; },
+        node: (key: string, hint: string, value?: number) => { if (hint === "select") return 0; },
+        has: (key: string, hint: string, value?: boolean) => { if (hint === "select") return false; },
     };
 }
 
@@ -142,35 +139,119 @@ type EachData = {
 
 declare const e$: SelectorLens<EachData>;
 
-// .each() unwraps element type for chaining, eval stays as array
-const e_addresses_each: SelectorLens<Address[], Address> = e$("addresses").each();
+// .each() unwraps element type for chaining, eval stays as array, target is element
+const e_addresses_each: DataLens<Address, Address[], Address> = e$("addresses").each();
 
-// .each() then property access — eval becomes string[], chain is string
-const e_types: SelectorLens<string[], string> = e$("addresses").each()("type");
-const e_zips: SelectorLens<string[], string> = e$("addresses").each()("zip");
+// .each() then property access — eval becomes string[], chain is string, target is string
+const e_types: DataLens<string, string[], string> = e$("addresses").each()("type");
+const e_zips: DataLens<string, string[], string> = e$("addresses").each()("zip");
 
-// .each() then .size() — length of each element's property
-const e_type_sizes: SelectorLens<number[], number> = e$("addresses").each()("type").size();
+// .each() then .size() — read-only, target is never
+const e_type_sizes: DataLens<never, number[], number> = e$("addresses").each()("type").size();
 
 // Simple array .each() then no further chaining
-const e_tags_each: SelectorLens<string[], string> = e$("tags").each();
+const e_tags_each: DataLens<string, string[], string> = e$("tags").each();
 
 // .each() on nested array field
-const e_nested_tags: SelectorLens<string[], string> = $("nested")("tags").each();
+const e_nested_tags: DataLens<string, string[], string> = $("nested")("tags").each();
 
 // .each() on number[][] — eval stays as number[][], chain unwraps to number[]
-const e_matrix_each: SelectorLens<number[][], number[]> = e$("matrix").each();
+const e_matrix_each: DataLens<number[], number[][], number[]> = e$("matrix").each();
 // .at() after .each() — chain is number[], at(0) gives number, eval wraps to number[]
-const e_matrix_each_at: SelectorLens<number[], number> = e$("matrix").each().at(0);
+const e_matrix_each_at: DataLens<number, number[], number> = e$("matrix").each().at(0);
 
 // Chaining .size() on the array itself vs after .each()
 const e_addr_size: SelectorLens<number> = e$("addresses").size(); // size of the array
 
-// should point to points to string[]
-const e_addrtype_aryEach: SelectorLens<number[], number> = e$("addresses")
+// .each() then .transform() — read-only (target = never), eval wraps
+const e_addrtype_aryEach: DataLens<never, number[], number> = e$("addresses")
     .each()
     .transform((m) => Number(m.type));
-const e_addrtype_ary: SelectorLens<string[], string> = e$("addresses")
+const e_addrtype_ary: DataLens<never, string[], string> = e$("addresses")
     .each()
     .transform((m) => m.type);
-const e_addrtype_num: SelectorLens<number> = e$("name").transform((item) => Number(item));
+const e_addrtype_num: DataLens<never, number> = e$("name").transform((item) => Number(item));
+
+// ============================================================
+// Target = never enforcement — read-only ops can't be mutation terminals
+// ============================================================
+
+// Enforcement works through function inference: when the lens callback returns
+// a DataLens with Target = never, R infers as never, making the value parameter
+// `never` — so any concrete value is a type error.
+
+declare function testMutate<D, R>(data: D, lens: ($: DataLens<D>) => MutatorLensOf<R>, value: R): void;
+declare function testApply<D, R>(data: D, lens: ($: DataLens<D>) => ApplierLensOf<R>, value: R): D;
+
+declare const testData: TestData;
+declare const eachTestData: EachData;
+declare const optTestData: OptionalData;
+
+// --- Valid mutation terminals (Target ≠ never) — should compile ---
+
+testMutate(testData, ($) => $("name"), "new");
+testMutate(testData, ($) => $("nested")("deep"), 42);
+testMutate(testData, ($) => $("roles")(0), "new");
+testMutate(testData, ($) => $("roles").at(0), "new");
+testMutate(eachTestData, ($) => $("addresses").each()("type"), "new");
+testMutate(optTestData, ($) => $("someMap").get("key"), 42);
+testApply(testData, ($) => $("name"), "new");
+testApply(testData, ($) => $("roles").at(-1), "new");
+
+// --- Invalid mutation terminals (Target = never) — @ts-expect-error on each ---
+
+// @ts-expect-error — .size() is read-only
+testMutate(testData, ($) => $("roles").size(), 3);
+// @ts-expect-error — .length() is read-only
+testMutate(testData, ($) => $("roles").length(), 3);
+// @ts-expect-error — .transform() is read-only
+testMutate(testData, ($) => $("name").transform((s) => s.length), 5);
+// @ts-expect-error — .keys() is read-only
+testMutate(testData, ($) => $("nested").keys(), ["a"]);
+// @ts-expect-error — .values() is read-only
+testMutate(testData, ($) => $("nested").values(), [1]);
+// @ts-expect-error — .has() is read-only
+testMutate(optTestData, ($) => $("someMap").has("key"), true);
+// @ts-expect-error — string .size() is read-only
+testMutate(testData, ($) => $("name").size(), 3);
+// @ts-expect-error — .size() after .each() is read-only
+testMutate(eachTestData, ($) => $("addresses").each()("type").size(), 5);
+
+// Same for apply
+// @ts-expect-error — .size() is read-only
+testApply(testData, ($) => $("roles").size(), 3);
+// @ts-expect-error — .transform() is read-only
+testApply(testData, ($) => $("name").transform((s) => s.length), 5);
+
+// --- where/filter/slice/sort set Target = never (need each/at to restore) ---
+
+// @ts-expect-error — .where() without .each()/.at() can't be terminal
+testMutate(testData, ($) => $("roles").where(($s) => [$s, "?"]), ["a"]);
+// @ts-expect-error — .filter() without .each()/.at() can't be terminal
+testMutate(testData, ($) => $("roles").filter(() => true), ["a"]);
+// @ts-expect-error — .slice() without .each()/.at() can't be terminal
+testMutate(testData, ($) => $("roles").slice(0, 1), ["a"]);
+
+// But where + each/at restores Target — should compile
+testMutate(testData, ($) => $("roles").where(($s) => [$s, "?"]).each(), "new");
+testMutate(testData, ($) => $("roles").where(($s) => [$s, "?"]).at(0), "new");
+
+// ============================================================
+// each(callback) — type-level tests
+// ============================================================
+
+// Eval is array of per-element results
+const ec_names: DataLens<string, string[], string> = e$("addresses").each((el) => el("type"));
+
+// Chaining after each(callback) — chain is string, so property access on string
+const ec_chain: DataLens<never, number[], number> = e$("addresses").each((el) => el("type")).size();
+
+// each(callback) with mutable path — valid mutation terminal
+testMutate(eachTestData, ($) => $("addresses").each((el) => el("type")), "new");
+
+// each(callback) with read-only sub-path — Target = never
+// @ts-expect-error — .size() inside callback makes it read-only
+testMutate(eachTestData, ($) => $("addresses").each((el) => el("type").size()), 5);
+
+// each(callback) apply with mutable path
+testApply(eachTestData, ($) => $("addresses").each((el) => el("type")), "new");

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensAccess, LensMutate, LensSubAccess, LensSubMutate } from "../../src/types";
+import { LensNav, SubLensNav } from "../../src/types";
 
 // Path segment helpers for assertions
 const P = (key: string) => ({ type: "property" as const, key });
@@ -500,21 +500,19 @@ describe("Lens.mutate", () => {
             get y() {
                 return this.#y;
             }
-            [LensAccess] = {
-                x: () => this.#x,
-                y: () => this.#y,
-            };
-            [LensMutate] = {
-                x: (v: number) => {
-                    this.#x = v;
+            [LensNav] = {
+                x: (hint: string, value?: number) => {
+                    if (hint === "select") return this.#x;
+                    if (hint === "mutate") this.#x = value!;
                 },
-                y: (v: number) => {
-                    this.#y = v;
+                y: (hint: string, value?: number) => {
+                    if (hint === "select") return this.#y;
+                    if (hint === "mutate") this.#y = value!;
                 },
             };
         }
 
-        it("mutates via custom named accessor (LensMutate)", () => {
+        it("mutates via custom named accessor (LensNav)", () => {
             const data = { pos: new Vector2(3, 4) };
             Lens.mutate(data, ($) => ($("pos") as any).x(), 10);
             expect(data.pos.x).toBe(10);
@@ -535,17 +533,15 @@ describe("Lens.mutate", () => {
             getVal(key: string) {
                 return this.#data[key];
             }
-            [LensSubAccess] = {
-                lookup: (key: string) => this.#data[key],
-            };
-            [LensSubMutate] = {
-                lookup: (key: string, value: number) => {
-                    this.#data[key] = value;
+            [SubLensNav] = {
+                lookup: (key: string, hint: string, value?: number) => {
+                    if (hint === "select") return this.#data[key];
+                    if (hint === "mutate") this.#data[key] = value!;
                 },
             };
         }
 
-        it("mutates via custom keyed accessor (LensSubMutate)", () => {
+        it("mutates via custom keyed accessor (SubLensNav)", () => {
             const store = new KeyedStore({ alpha: 10, beta: 20 });
             const data = { store };
             Lens.mutate(data, ($) => ($("store") as any).lookup("alpha"), 99);
@@ -702,8 +698,10 @@ describe("Lens.mutate", () => {
                 #x = 3; #y = 4;
                 get x() { return this.#x; }
                 get y() { return this.#y; }
-                [LensAccess] = { x: () => this.#x, y: () => this.#y };
-                [LensMutate] = { x: (v: number) => { this.#x = v; }, y: (v: number) => { this.#y = v; } };
+                [LensNav] = {
+                    x: (hint: string, v?: number) => { if (hint === "select") return this.#x; if (hint === "mutate") this.#x = v!; },
+                    y: (hint: string, v?: number) => { if (hint === "select") return this.#y; if (hint === "mutate") this.#y = v!; },
+                };
             })() };
             let captured: Lens.Context | undefined;
             Lens.mutate(data, ($) => ($("pos") as any).x(), (prev, _i, ctx) => {
@@ -717,8 +715,7 @@ describe("Lens.mutate", () => {
             const data = { store: new (class {
                 #data: Record<string, number> = { alpha: 10, beta: 20 };
                 getVal(key: string) { return this.#data[key]; }
-                [LensSubAccess] = { lookup: (key: string) => this.#data[key] };
-                [LensSubMutate] = { lookup: (key: string, value: number) => { this.#data[key] = value; } };
+                [SubLensNav] = { lookup: (key: string, hint: string, value?: number) => { if (hint === "select") return this.#data[key]; if (hint === "mutate") this.#data[key] = value!; } };
             })() };
             let captured: Lens.Context | undefined;
             Lens.mutate(data, ($) => ($("store") as any).lookup("alpha"), (prev, _i, ctx) => {
@@ -737,6 +734,69 @@ describe("Lens.mutate", () => {
             });
             // all 4 are iterated
             expect(contexts.every((c) => c.count === 4)).toBe(true);
+        });
+    });
+
+    // ================================================================
+    // each(callback) — per-element dynamic navigation
+    // ================================================================
+
+    describe("each(callback)", () => {
+        it("basic: each(el => el(field)) mutates like each()(field)", () => {
+            const data = makeTeam();
+            Lens.mutate(data, ($) => $.each((el) => el("role")), "updated");
+            expect(data.every((d) => d.role === "updated")).toBe(true);
+        });
+
+        it("dynamic index: mutate at per-element pointer", () => {
+            const data = [
+                { pointer: 1, refs: ["a", "b", "c"] },
+                { pointer: 0, refs: ["x", "y"] },
+            ];
+            Lens.mutate(data, ($) => $.each((el) => el("refs").at(el("pointer"))), "!");
+            expect(data[0].refs).toEqual(["a", "!", "c"]);
+            expect(data[1].refs).toEqual(["!", "y"]);
+        });
+
+        it("with updater function", () => {
+            const data = [
+                { pointer: 0, vals: [10, 20] },
+                { pointer: 1, vals: [30, 40] },
+            ];
+            Lens.mutate(data, ($) => $.each((el) => el("vals").at(el("pointer"))), (prev) => (prev as number) * 100);
+            expect(data[0].vals).toEqual([1000, 20]);
+            expect(data[1].vals).toEqual([30, 4000]);
+        });
+
+        it("with where filter before each(callback)", () => {
+            const data = [
+                { active: true, pointer: 1, refs: ["a", "b"] },
+                { active: false, pointer: 0, refs: ["c", "d"] },
+                { active: true, pointer: 0, refs: ["e", "f"] },
+            ];
+            Lens.mutate(data, ($) => $.where(($s) => [$s("active"), "?"]).each((el) => el("refs").at(el("pointer"))), "!");
+            expect(data[0].refs).toEqual(["a", "!"]);
+            expect(data[1].refs).toEqual(["c", "d"]); // untouched
+            expect(data[2].refs).toEqual(["!", "f"]);
+        });
+    });
+
+    // ================================================================
+    // Dynamic lens references — lens args in mutate context
+    // ================================================================
+
+    describe("dynamic lens references", () => {
+        it("$(n) with lens arg mutates correct element", () => {
+            const data = { idx: 1, items: ["a", "b", "c"] };
+            Lens.mutate(data, ($) => $("items")($("idx")), "X");
+            expect(data.items).toEqual(["a", "X", "c"]);
+        });
+
+        it("Map.get() with lens arg mutates correct entry", () => {
+            const data = { key: "fontSize", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            Lens.mutate(data, ($) => $("prefs").get($("key")), 20);
+            expect(data.prefs.get("fontSize")).toBe(20);
+            expect(data.prefs.get("theme")).toBe(1);
         });
     });
 });

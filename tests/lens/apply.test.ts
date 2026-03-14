@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensAccess, LensApply, LensSubAccess, LensSubApply } from "../../src/types";
+import { LensNav, SubLensNav } from "../../src/types";
 
 // Path segment helpers for assertions
 const P = (key: string) => ({ type: "property" as const, key });
@@ -352,17 +352,19 @@ describe("Lens.apply", () => {
             get y() {
                 return this.#y;
             }
-            [LensAccess] = {
-                x: () => this.#x,
-                y: () => this.#y,
-            };
-            [LensApply] = {
-                x: (v: number) => new Vector2(v, this.#y),
-                y: (v: number) => new Vector2(this.#x, v),
+            [LensNav] = {
+                x: (hint: string, value?: number) => {
+                    if (hint === "select") return this.#x;
+                    if (hint === "apply") return new Vector2(value!, this.#y);
+                },
+                y: (hint: string, value?: number) => {
+                    if (hint === "select") return this.#y;
+                    if (hint === "apply") return new Vector2(this.#x, value!);
+                },
             };
         }
 
-        it("applies via custom named accessor (LensApply) — returns new instance", () => {
+        it("applies via custom named accessor (LensNav) — returns new instance", () => {
             const data = { pos: new Vector2(3, 4) };
             const result = Lens.apply(data, ($) => ($("pos") as any).x(), 10);
             expect(result.pos.x).toBe(10);
@@ -386,19 +388,19 @@ describe("Lens.apply", () => {
             getVal(key: string) {
                 return this.#data[key];
             }
-            [LensSubAccess] = {
-                lookup: (key: string) => this.#data[key],
-            };
-            [LensSubApply] = {
-                lookup: (key: string, value: number) => {
-                    const next = new KeyedStore(this.#data);
-                    next.#data[key] = value;
-                    return next;
+            [SubLensNav] = {
+                lookup: (key: string, hint: string, value?: number) => {
+                    if (hint === "select") return this.#data[key];
+                    if (hint === "apply") {
+                        const next = new KeyedStore(this.#data);
+                        next.#data[key] = value!;
+                        return next;
+                    }
                 },
             };
         }
 
-        it("applies via custom keyed accessor (LensSubApply) — returns new instance", () => {
+        it("applies via custom keyed accessor (SubLensNav) — returns new instance", () => {
             const store = new KeyedStore({ alpha: 10, beta: 20 });
             const data = { store };
             const result = Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), 99);
@@ -637,8 +639,10 @@ describe("Lens.apply", () => {
                 #x = 3; #y = 4;
                 get x() { return this.#x; }
                 get y() { return this.#y; }
-                [LensAccess] = { x: () => this.#x, y: () => this.#y };
-                [LensApply] = { x: (v: number) => new (this.constructor as any)(v, this.#y), y: (v: number) => new (this.constructor as any)(this.#x, v) };
+                [LensNav] = {
+                    x: (hint: string, v?: number) => { if (hint === "select") return this.#x; if (hint === "apply") return new (this.constructor as any)(v, this.#y); },
+                    y: (hint: string, v?: number) => { if (hint === "select") return this.#y; if (hint === "apply") return new (this.constructor as any)(this.#x, v); },
+                };
             })() };
             let captured: Lens.Context | undefined;
             Lens.apply(data, ($) => ($("pos") as any).x(), (prev, _i, ctx) => {
@@ -652,8 +656,7 @@ describe("Lens.apply", () => {
             const data = { store: new (class {
                 #data: Record<string, number> = { alpha: 10, beta: 20 };
                 getVal(key: string) { return this.#data[key]; }
-                [LensSubAccess] = { lookup: (key: string) => this.#data[key] };
-                [LensSubApply] = { lookup: (key: string, value: number) => { const n = new (this.constructor as any)(); n.#data = { ...this.#data, [key]: value }; return n; } };
+                [SubLensNav] = { lookup: (key: string, hint: string, value?: number) => { if (hint === "select") return this.#data[key]; if (hint === "apply") { const n = new (this.constructor as any)(); n.#data = { ...this.#data, [key]: value }; return n; } } };
             })() };
             let captured: Lens.Context | undefined;
             Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), (prev, _i, ctx) => {
@@ -677,6 +680,64 @@ describe("Lens.apply", () => {
             expect(contexts[1]).toEqual({ path: [I(2), P("role")], index: 1, count: 4 });
             expect(contexts[2]).toEqual({ path: [I(1), P("role")], index: 2, count: 4 });
             expect(contexts[3]).toEqual({ path: [I(3), P("role")], index: 3, count: 4 });
+        });
+    });
+
+    // ================================================================
+    // each(callback) — per-element dynamic navigation
+    // ================================================================
+
+    describe("each(callback)", () => {
+        it("basic: each(el => el(field)) applies like each()(field)", () => {
+            const data = makeTeam();
+            const result = Lens.apply(data, ($) => $.each((el) => el("role")), "updated");
+            expect(result.every((d) => d.role === "updated")).toBe(true);
+            expect(data[0].role).toBe("dev"); // original unchanged
+        });
+
+        it("dynamic index: apply at per-element pointer", () => {
+            const data = [
+                { pointer: 1, refs: ["a", "b", "c"] },
+                { pointer: 0, refs: ["x", "y"] },
+            ];
+            const result = Lens.apply(data, ($) => $.each((el) => el("refs").at(el("pointer"))), "!");
+            expect(result[0].refs).toEqual(["a", "!", "c"]);
+            expect(result[1].refs).toEqual(["!", "y"]);
+            // original unchanged
+            expect(data[0].refs).toEqual(["a", "b", "c"]);
+            expect(data[1].refs).toEqual(["x", "y"]);
+        });
+
+        it("structural sharing preserved", () => {
+            const data = [
+                { pointer: 0, refs: ["a", "b"] },
+                { pointer: 1, refs: ["c", "d"] },
+            ];
+            const result = Lens.apply(data, ($) => $.each((el) => el("refs").at(el("pointer"))), "!");
+            // Both elements modified, but identity check on untouched nested values
+            expect(result).not.toBe(data);
+            expect(result[0]).not.toBe(data[0]);
+            expect(result[1]).not.toBe(data[1]);
+        });
+    });
+
+    // ================================================================
+    // Dynamic lens references — lens args in apply context
+    // ================================================================
+
+    describe("dynamic lens references", () => {
+        it("$(n) with lens arg applies to correct element", () => {
+            const data = { idx: 1, items: ["a", "b", "c"] };
+            const result = Lens.apply(data, ($) => $("items")($("idx")), "X");
+            expect(result.items).toEqual(["a", "X", "c"]);
+            expect(data.items).toEqual(["a", "b", "c"]); // original unchanged
+        });
+
+        it("Map.get() with lens arg applies correctly", () => {
+            const data = { key: "fontSize", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            const result = Lens.apply(data, ($) => $("prefs").get($("key")), 20);
+            expect(result.prefs.get("fontSize")).toBe(20);
+            expect(data.prefs.get("fontSize")).toBe(14); // original unchanged
         });
     });
 });

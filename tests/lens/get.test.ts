@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensSubSelect, LensSubAccess, Contains, Containable } from "../../src/types";
+import { SubLensNav, Contains, Containable } from "../../src/types";
 
 // --- Test fixtures ---
 
@@ -345,12 +345,14 @@ describe("Lens.get", () => {
             constructor(entries: Record<string, number>) {
                 this.#entries = entries;
             }
-            [LensSubSelect] = {
-                lookup: (key: string) => this.#entries[key] ?? -1,
+            [SubLensNav] = {
+                lookup: (key: string, hint: string, value?: number) => {
+                    if (hint === "select") return this.#entries[key] ?? -1;
+                },
             };
         }
 
-        it("dispatches LensSubQuery methods", () => {
+        it("dispatches SubLensNav methods", () => {
             const data = { reg: new Registry({ alpha: 10, beta: 20 }) };
             expect(Lens.get(data, ($) => ($("reg") as any).lookup("alpha"))).toBe(10);
             expect(Lens.get(data, ($) => ($("reg") as any).lookup("missing"))).toBe(-1);
@@ -361,12 +363,14 @@ describe("Lens.get", () => {
             constructor(data: Map<string, string>) {
                 this.#data = data;
             }
-            [LensSubAccess] = {
-                fetch: (key: string) => this.#data.get(key) ?? null,
+            [SubLensNav] = {
+                fetch: (key: string, hint: string, value?: string | null) => {
+                    if (hint === "select") return this.#data.get(key) ?? null;
+                },
             };
         }
 
-        it("dispatches LensSubAccess methods", () => {
+        it("dispatches SubLensNav keyed methods", () => {
             const data = { store: new ReadOnlyStore(new Map([["x", "hello"]])) };
             expect(Lens.get(data, ($) => ($("store") as any).fetch("x"))).toBe("hello");
             expect(Lens.get(data, ($) => ($("store") as any).fetch("y"))).toBeNull();
@@ -671,6 +675,160 @@ describe("Lens.get", () => {
             ];
             const result = Lens.get(data, ($) => $.where(($s) => [$s("nums"), "#", 3]));
             expect(result.map((r: any) => r.name)).toEqual(["odds", "primes"]);
+        });
+    });
+
+    // ================================================================
+    // each(callback) — per-element navigation
+    // ================================================================
+
+    describe("each(callback)", () => {
+        const items = [
+            { name: "A", pointer: 1, refs: ["x", "y", "z"] },
+            { name: "B", pointer: 0, refs: ["p", "q"] },
+            { name: "C", pointer: 2, refs: ["a", "b", "c"] },
+        ];
+
+        it("basic: each(el => el(field)) works like each()(field)", () => {
+            const result = Lens.get(items, ($) => $.each((el) => el("name")));
+            expect(result).toEqual(["A", "B", "C"]);
+        });
+
+        it("dynamic index: each(el => el(refs).at(el(pointer)))", () => {
+            const result = Lens.get(items, ($) => $.each((el) => el("refs").at(el("pointer"))));
+            expect(result).toEqual(["y", "p", "c"]);
+        });
+
+        it("root closure: callback uses root $ for cross-referencing", () => {
+            const data = { globalIdx: 0, items: [{ refs: ["a", "b"] }, { refs: ["c", "d"] }] };
+            const result = Lens.get(data, ($) => $("items").each((el) => el("refs").at($("globalIdx"))));
+            expect(result).toEqual(["a", "c"]);
+        });
+
+        it("chaining after each(callback)", () => {
+            const data = [
+                { ref: { name: "Alice", age: 30 } },
+                { ref: { name: "Bob", age: 25 } },
+            ];
+            const result = Lens.get(data, ($) => $.each((el) => el("ref"))("name"));
+            expect(result).toEqual(["Alice", "Bob"]);
+        });
+
+        it("with where filter before each(callback)", () => {
+            const result = Lens.get(items, ($) => $.where(($s) => [$s("pointer"), ">", 0]).each((el) => el("refs").at(el("pointer"))));
+            expect(result).toEqual(["y", "c"]);
+        });
+
+        it("null safety: missing fields return undefined", () => {
+            const data = [{ a: { b: 1 } }, { a: null }, { a: { b: 3 } }];
+            const result = Lens.get(data, ($) => $.each((el) => el("a")("b")));
+            expect(result).toEqual([1, undefined, 3]);
+        });
+    });
+
+    // ================================================================
+    // Dynamic lens references — lens args in $(n), get, has, slice
+    // ================================================================
+
+    describe("dynamic lens references", () => {
+        it("$(n) with lens arg — index from sibling field", () => {
+            const data = { idx: 2, items: ["a", "b", "c", "d"] };
+            const result = Lens.get(data, ($) => $("items")($("idx")));
+            expect(result).toBe("c");
+        });
+
+        it("$(n) with negative lens arg", () => {
+            const data = { idx: -1, items: ["a", "b", "c"] };
+            const result = Lens.get(data, ($) => $("items")($("idx")));
+            expect(result).toBe("c");
+        });
+
+        it("at() with lens arg from root", () => {
+            const data = { pick: 1, scores: [10, 20, 30] };
+            const result = Lens.get(data, ($) => $("scores").at($("pick")));
+            expect(result).toBe(20);
+        });
+
+        it("Map.get() with lens arg", () => {
+            const data = { key: "fontSize", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            const result = Lens.get(data, ($) => $("prefs").get($("key")));
+            expect(result).toBe(14);
+        });
+
+        it("Set.has() with lens arg", () => {
+            const data = { check: "dev", tags: new Set(["dev", "lead"]) };
+            const result = Lens.get(data, ($) => $("tags").has($("check")));
+            expect(result).toBe(true);
+        });
+
+        it("Set.has() with lens arg — negative case", () => {
+            const data = { check: "nope", tags: new Set(["dev", "lead"]) };
+            const result = Lens.get(data, ($) => $("tags").has($("check")));
+            expect(result).toBe(false);
+        });
+
+        it("Map.has() with lens arg", () => {
+            const data = { key: "theme", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            const result = Lens.get(data, ($) => $("prefs").has($("key")));
+            expect(result).toBe(true);
+        });
+
+        it("slice() with lens args", () => {
+            const data = { from: 1, to: 3, items: ["a", "b", "c", "d", "e"] };
+            const result = Lens.get(data, ($) => $("items").slice($("from"), $("to")));
+            expect(result).toEqual(["b", "c"]);
+        });
+
+        it("slice() with only start as lens arg", () => {
+            const data = { from: 2, items: ["a", "b", "c", "d"] };
+            const result = Lens.get(data, ($) => $("items").slice($("from")));
+            expect(result).toEqual(["c", "d"]);
+        });
+
+        it("each(callback) with $(n) inside callback", () => {
+            const data = [
+                { pick: 0, vals: [10, 20] },
+                { pick: 1, vals: [30, 40] },
+            ];
+            const result = Lens.get(data, ($) => $.each((el) => el("vals")(el("pick"))));
+            expect(result).toEqual([10, 40]);
+        });
+
+        it("custom keyed accessor with lens arg", () => {
+            class Registry {
+                #entries: Record<string, number>;
+                constructor(entries: Record<string, number>) {
+                    this.#entries = entries;
+                }
+                [SubLensNav] = {
+                    lookup: (key: string, hint: string, value?: number) => {
+                        if (hint === "select") return this.#entries[key] ?? -1;
+                    },
+                };
+            }
+            const data = { which: "beta", reg: new Registry({ alpha: 10, beta: 20, gamma: 30 }) };
+            const result = Lens.get(data, ($) => ($("reg") as any).lookup($("which")));
+            expect(result).toBe(20);
+        });
+
+        it("custom keyed accessor with lens arg inside each()", () => {
+            class Store {
+                #data: Record<string, number>;
+                constructor(data: Record<string, number>) {
+                    this.#data = data;
+                }
+                [SubLensNav] = {
+                    lookup: (key: string, hint: string, value?: number) => {
+                        if (hint === "select") return this.#data[key] ?? 0;
+                    },
+                };
+            }
+            const data = [
+                { key: "x", store: new Store({ x: 100, y: 200 }) },
+                { key: "y", store: new Store({ x: 300, y: 400 }) },
+            ];
+            const result = Lens.get(data, ($) => $.each((el) => (el("store") as any).lookup(el("key"))));
+            expect(result).toEqual([100, 400]);
         });
     });
 });
