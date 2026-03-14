@@ -28,10 +28,7 @@ export type DeepReadonly<T> = T extends Primitive
             ? ReadonlySet<DeepReadonly<U>>
             : { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
-export type LensPathSegment =
-    | { type: "property"; key: string }
-    | { type: "index"; index: number }
-    | { type: "accessor"; name: string; key?: string };
+export type LensPathSegment = { type: "property"; key: string } | { type: "index"; index: number } | { type: "accessor"; name: string; key?: string };
 
 export type TreeId = string;
 export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
@@ -65,6 +62,7 @@ export type SocketedGraphNodeOf<N> = { id: GraphNodeId; in: { [key: GraphSocketI
 export type SocketedGraphLinkOf<L> = { id: GraphLinkId; fromNode: GraphNodeId; toNode: GraphNodeId; fromSocket: GraphSocketId; toSocket: GraphSocketId; data: L };
 
 export const Compare = Symbol();
+export const Contains = Symbol();
 export const Equals = Symbol();
 export const TypeOf = Symbol();
 
@@ -80,10 +78,12 @@ export const LensSubMutate = Symbol();
 export const LensApply = Symbol();
 export const LensSubApply = Symbol();
 
-export const Setter = Symbol();
-
 export interface Comparable {
     [Compare]: (other: unknown) => number; // -1, 0, 1
+}
+
+export interface Containable<T> {
+    [Contains]: (other: T) => boolean;
 }
 
 export interface Equatable {

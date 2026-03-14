@@ -1,4 +1,4 @@
-import { Comparable } from "../types";
+import { Comparable, Containable } from "../types";
 import { SelectorLens, SelectorLensOf } from "./lens/types";
 
 // --- Operator catalog ---
@@ -56,7 +56,7 @@ export type OperatorFor<O, A extends 2 | 3 | 4> = A extends 4
             | TypeofAnyOfOp
             | (O extends number | bigint | string | Comparable ? OrderingOp : never)
             | (O extends string ? StringOp | StringAnyOfOp | StringAllOfOp | RegexOp | RegexAnyOfOp | RegexAllOfOp : never)
-            | (O extends any[] ? HasOp | HasAnyOfOp | HasAllOfOp : never);
+            | (O extends any[] | Set<any> | Containable<any> ? HasOp | HasAnyOfOp | HasAllOfOp : never);
 
 // --- Operand type mapping ---
 
@@ -79,11 +79,19 @@ export type OperandFor<O, Op> =
                 Op extends HasOp
                 ? O extends (infer E)[]
                     ? E | SelectorLens<E>
-                    : never
+                    : O extends Set<infer E>
+                      ? E | SelectorLens<E>
+                      : O extends Containable<infer E>
+                        ? E | SelectorLens<E>
+                        : never
                 : Op extends HasAnyOfOp | HasAllOfOp
                   ? O extends (infer E)[]
                       ? (E | SelectorLens<E>)[]
-                      : never
+                      : O extends Set<infer E>
+                        ? (E | SelectorLens<E>)[]
+                        : O extends Containable<infer E>
+                          ? (E | SelectorLens<E>)[]
+                          : never
                   : // Any-of / all-of: RHS is array of O
                     Op extends AnyOfOp
                     ? (O | SelectorLens<O>)[]

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensSubSelect, LensSubAccess } from "../../src/types";
+import { LensSubSelect, LensSubAccess, Contains, Containable } from "../../src/types";
 
 // --- Test fixtures ---
 
@@ -588,6 +588,89 @@ describe("Lens.get", () => {
 
         it("works with size", () => {
             expect(Lens.get(person, ($) => $("roles").size())).toBe(3);
+        });
+    });
+
+    describe("# operator with Sets", () => {
+        it("filters by Set membership", () => {
+            const data = [
+                { name: "a", tags: new Set(["x", "y"]) },
+                { name: "b", tags: new Set(["y", "z"]) },
+                { name: "c", tags: new Set(["z", "w"]) },
+            ];
+            const result = Lens.get(data, ($) => $.where(($s) => [$s("tags"), "#", "y"]));
+            expect(result.map((r: any) => r.name)).toEqual(["a", "b"]);
+        });
+
+        it("negated Set membership with !#", () => {
+            const data = [
+                { name: "a", tags: new Set(["x", "y"]) },
+                { name: "b", tags: new Set(["y", "z"]) },
+                { name: "c", tags: new Set(["z", "w"]) },
+            ];
+            const result = Lens.get(data, ($) => $.where(($s) => [$s("tags"), "!#", "y"]));
+            expect(result.map((r: any) => r.name)).toEqual(["c"]);
+        });
+    });
+
+    describe("# operator with Containable", () => {
+        class TagBag implements Containable<string> {
+            items: string[];
+            constructor(...items: string[]) {
+                this.items = items;
+            }
+            [Contains] = (other: string) => this.items.includes(other);
+        }
+
+        it("filters by Containable membership", () => {
+            const data = [
+                { name: "a", bag: new TagBag("x", "y") },
+                { name: "b", bag: new TagBag("y", "z") },
+                { name: "c", bag: new TagBag("z", "w") },
+            ];
+            const result = Lens.get(data, ($) => $.where(($s) => [$s("bag"), "#", "y"]));
+            expect(result.map((r: any) => r.name)).toEqual(["a", "b"]);
+        });
+
+        it("negated Containable membership with !#", () => {
+            const data = [
+                { name: "a", bag: new TagBag("x", "y") },
+                { name: "b", bag: new TagBag("y", "z") },
+                { name: "c", bag: new TagBag("z", "w") },
+            ];
+            const result = Lens.get(data, ($) => $.where(($s) => [$s("bag"), "!#", "y"]));
+            expect(result.map((r: any) => r.name)).toEqual(["c"]);
+        });
+
+        it("Containable takes priority over array fallback", () => {
+            // An object that is array-like but also has Contains — Contains should win
+            class WeirdContainer implements Containable<number> {
+                // Contains always returns true regardless of input
+                [Contains] = (_other: number) => true;
+            }
+            const data = [{ val: new WeirdContainer() }, { val: [1, 2, 3] }];
+            // WeirdContainer's Contains always returns true, so val with WeirdContainer matches
+            const result = Lens.get(data, ($) => $.where(($s) => [$s("val"), "#", 999]));
+            expect(result).toHaveLength(1);
+            expect(result[0].val).toBeInstanceOf(WeirdContainer);
+        });
+
+        it("Containable with numeric element type", () => {
+            class NumberSet implements Containable<number> {
+                private nums: Set<number>;
+                constructor(...nums: number[]) {
+                    this.nums = new Set(nums);
+                }
+                [Contains] = (other: number) => this.nums.has(other);
+            }
+
+            const data = [
+                { name: "evens", nums: new NumberSet(2, 4, 6) },
+                { name: "odds", nums: new NumberSet(1, 3, 5) },
+                { name: "primes", nums: new NumberSet(2, 3, 5) },
+            ];
+            const result = Lens.get(data, ($) => $.where(($s) => [$s("nums"), "#", 3]));
+            expect(result.map((r: any) => r.name)).toEqual(["odds", "primes"]);
         });
     });
 });

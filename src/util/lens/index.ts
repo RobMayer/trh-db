@@ -1,5 +1,5 @@
 import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf } from "./types";
-import { Compare, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply, DeepReadonly, LensPathSegment } from "../../types";
+import { Compare, Contains, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply, DeepReadonly, LensPathSegment } from "../../types";
 
 //#region - Public API
 
@@ -219,7 +219,7 @@ const OPS: Record<string, (subject: any, operand: any, operand2?: any) => boolea
             return false;
         }
     },
-    "#": (s, o) => Array.isArray(s) && s.includes(o),
+    "#": (s, o) => (s != null && typeof s === "object" && Contains in s ? (s as any)[Contains](o) : Array.isArray(s) ? s.includes(o) : s instanceof Set ? s.has(o) : false),
     ":": (s, o) => resolveTypeOf(s).startsWith(String(o)),
     "><": (s, lo, hi) => {
         const ord = compare(lo, hi);
