@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
 import { LensAccess, LensApply, LensSubAccess, LensSubApply } from "../../src/types";
 
+// Path segment helpers for assertions
+const P = (key: string) => ({ type: "property" as const, key });
+const I = (index: number) => ({ type: "index" as const, index });
+const A = (name: string, key?: string) => (key !== undefined ? { type: "accessor" as const, name, key } : { type: "accessor" as const, name });
+
 // --- Test fixtures ---
 
 const makePerson = () => ({
@@ -536,7 +541,7 @@ describe("Lens.apply", () => {
                 captured = ctx;
                 return "Seattle";
             });
-            expect(captured!.path).toEqual(["address", "city"]);
+            expect(captured!.path).toEqual([P("address"), P("city")]);
             expect(captured!.index).toBe(0);
             expect(captured!.count).toBe(1);
         });
@@ -549,8 +554,8 @@ describe("Lens.apply", () => {
                 return prev;
             });
             expect(contexts).toHaveLength(4);
-            expect(contexts[0]).toEqual({ path: [0, "name"], index: 0, count: 4 });
-            expect(contexts[3]).toEqual({ path: [3, "name"], index: 3, count: 4 });
+            expect(contexts[0]).toEqual({ path: [I(0), P("name")], index: 0, count: 4 });
+            expect(contexts[3]).toEqual({ path: [I(3), P("name")], index: 3, count: 4 });
         });
 
         it("provides index and count for filtered each", () => {
@@ -561,24 +566,24 @@ describe("Lens.apply", () => {
                 return prev;
             });
             expect(contexts).toHaveLength(2);
-            expect(contexts[0]).toEqual({ path: [0, "name"], index: 0, count: 2 });
-            expect(contexts[1]).toEqual({ path: [2, "name"], index: 1, count: 2 });
+            expect(contexts[0]).toEqual({ path: [I(0), P("name")], index: 0, count: 2 });
+            expect(contexts[1]).toEqual({ path: [I(2), P("name")], index: 1, count: 2 });
         });
 
         it("provides path through nested each (2D) with structural sharing", () => {
             const data = makeMatrix();
-            const paths: (string | number)[][] = [];
+            const paths: any[][] = [];
             const result = Lens.apply(data, ($) => $("rows").each().each()("val"), (prev, ctx) => {
                 paths.push([...ctx.path]);
                 return prev * 10;
             });
             expect(paths).toEqual([
-                ["rows", 0, 0, "val"],
-                ["rows", 0, 1, "val"],
-                ["rows", 1, 0, "val"],
-                ["rows", 1, 1, "val"],
-                ["rows", 2, 0, "val"],
-                ["rows", 2, 1, "val"],
+                [P("rows"), I(0), I(0), P("val")],
+                [P("rows"), I(0), I(1), P("val")],
+                [P("rows"), I(1), I(0), P("val")],
+                [P("rows"), I(1), I(1), P("val")],
+                [P("rows"), I(2), I(0), P("val")],
+                [P("rows"), I(2), I(1), P("val")],
             ]);
             expect(result.rows[0][0].val).toBe(10);
             expect(data.rows[0][0].val).toBe(1); // original unchanged
@@ -603,7 +608,7 @@ describe("Lens.apply", () => {
                 captured = ctx;
                 return 0;
             });
-            expect(captured!.path).toEqual(["scores", 3]); // -1 resolves to index 3
+            expect(captured!.path).toEqual([P("scores"), I(3)]); // -1 resolves to index 3
         });
 
         it("at() after filter provides index 0, count 1", () => {
@@ -624,7 +629,7 @@ describe("Lens.apply", () => {
                 captured = ctx;
                 return 16;
             });
-            expect(captured!.path).toEqual(["prefs", "fontSize"]);
+            expect(captured!.path).toEqual([P("prefs"), A("get", "fontSize")]);
         });
 
         it("custom named accessor shows prop() in path", () => {
@@ -640,7 +645,7 @@ describe("Lens.apply", () => {
                 captured = ctx;
                 return 10;
             });
-            expect(captured!.path).toEqual(["pos", "x()"]);
+            expect(captured!.path).toEqual([P("pos"), A("x")]);
         });
 
         it("custom keyed accessor shows prop(key) in path", () => {
@@ -655,7 +660,7 @@ describe("Lens.apply", () => {
                 captured = ctx;
                 return 99;
             });
-            expect(captured!.path).toEqual(["store", "lookup(alpha)"]);
+            expect(captured!.path).toEqual([P("store"), A("lookup", "alpha")]);
         });
 
         it("sort + each provides sorted iteration with correct index and count", () => {
@@ -668,10 +673,10 @@ describe("Lens.apply", () => {
             expect(contexts).toHaveLength(4);
             expect(contexts.every((c) => c.count === 4)).toBe(true);
             // Sorted: Alice(0), Carol(2), Bob(1), Dave(3)
-            expect(contexts[0]).toEqual({ path: [0, "role"], index: 0, count: 4 });
-            expect(contexts[1]).toEqual({ path: [2, "role"], index: 1, count: 4 });
-            expect(contexts[2]).toEqual({ path: [1, "role"], index: 2, count: 4 });
-            expect(contexts[3]).toEqual({ path: [3, "role"], index: 3, count: 4 });
+            expect(contexts[0]).toEqual({ path: [I(0), P("role")], index: 0, count: 4 });
+            expect(contexts[1]).toEqual({ path: [I(2), P("role")], index: 1, count: 4 });
+            expect(contexts[2]).toEqual({ path: [I(1), P("role")], index: 2, count: 4 });
+            expect(contexts[3]).toEqual({ path: [I(3), P("role")], index: 3, count: 4 });
         });
     });
 });

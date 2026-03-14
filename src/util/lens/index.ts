@@ -1,5 +1,5 @@
 import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf } from "./types";
-import { Compare, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply, DeepReadonly } from "../../types";
+import { Compare, Equals, TypeOf, LensSubSelect, LensSubAccess, LensSelect, LensAccess, LensMutate, LensSubMutate, LensApply, LensSubApply, DeepReadonly, LensPathSegment } from "../../types";
 
 //#region - Public API
 
@@ -10,7 +10,7 @@ export namespace Lens {
         return (result as any)[LENS].value;
     };
 
-    export type Context = { path: (string | number)[]; index: number; count: number };
+    export type Context = { path: LensPathSegment[]; index: number; count: number };
 
     export const mutate = <D, R>(data: D, lens: ($: MutatorLens<D>) => MutatorLensOf<R>, value: R | ((prev: R, context: Lens.Context) => R)): void => {
         const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
@@ -558,6 +558,13 @@ function matchingIndices(arr: any[], ops: FilterOp[]): number[] {
     return indices;
 }
 
+const seg = {
+    prop: (key: string): LensPathSegment => ({ type: "property", key }),
+    idx: (index: number): LensPathSegment => ({ type: "index", index }),
+    acc: (name: string, key?: string): LensPathSegment => (key !== undefined ? { type: "accessor", name, key } : { type: "accessor", name }),
+    fromPropStep: (key: string | number): LensPathSegment => (typeof key === "number" ? seg.idx(key) : seg.prop(key)),
+};
+
 function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: any, ctx: Lens.Context) => any, ctx: Lens.Context): any {
     if (idx >= steps.length) return updater(current, ctx);
 
@@ -566,7 +573,7 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
 
     switch (step.type) {
         case "prop": {
-            const childCtx = { ...ctx, path: [...ctx.path, step.key] };
+            const childCtx = { ...ctx, path: [...ctx.path, seg.fromPropStep(step.key)] };
             const child = doApply(current[step.key], steps, next, updater, childCtx);
             if (Array.isArray(current)) {
                 const result = [...current];
@@ -584,7 +591,7 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             } else {
                 resolved = step.index < 0 ? current.length + step.index : step.index;
             }
-            const childCtx = { ...ctx, path: [...ctx.path, resolved] };
+            const childCtx = { ...ctx, path: [...ctx.path, seg.idx(resolved)] };
             const child = doApply(current[resolved], steps, next, updater, childCtx);
             const result = [...current];
             result[resolved] = child;
@@ -596,16 +603,16 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
                 const result = [...current];
                 for (let j = 0; j < indices.length; j++) {
                     const i = indices[j];
-                    const childCtx = { path: [...ctx.path, i], index: j, count: indices.length };
+                    const childCtx = { path: [...ctx.path, seg.idx(i)], index: j, count: indices.length };
                     result[i] = doApply(current[i], steps, next, updater, childCtx);
                 }
                 return result;
             }
-            return (current as any[]).map((item: any, j: number) => doApply(item, steps, next, updater, { path: [...ctx.path, j], index: j, count: current.length }));
+            return (current as any[]).map((item: any, j: number) => doApply(item, steps, next, updater, { path: [...ctx.path, seg.idx(j)], index: j, count: current.length }));
         }
         case "mapGet": {
             const map = new Map(current as Map<any, any>);
-            const childCtx = { ...ctx, path: [...ctx.path, String(step.key)] };
+            const childCtx = { ...ctx, path: [...ctx.path, seg.acc("get", String(step.key))] };
             map.set(step.key, doApply(map.get(step.key), steps, next, updater, childCtx));
             return map;
         }
@@ -613,7 +620,7 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             const read = current?.[LensSubAccess]?.[step.prop];
             const applyFn = current?.[LensSubApply]?.[step.prop];
             if (read && applyFn) {
-                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}(${String(step.key)})`] };
+                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
                 return applyFn.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
             }
             return current;
@@ -622,7 +629,7 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             const read = current?.[LensAccess]?.[step.prop];
             const applyFn = current?.[LensApply]?.[step.prop];
             if (read && applyFn) {
-                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}()`] };
+                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
                 return applyFn.call(current, doApply(read.call(current), steps, next, updater, childCtx));
             }
             return current;
@@ -643,7 +650,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
 
     switch (step.type) {
         case "prop":
-            descend(current, step.key, { ...ctx, path: [...ctx.path, step.key] });
+            descend(current, step.key, { ...ctx, path: [...ctx.path, seg.fromPropStep(step.key)] });
             break;
         case "at": {
             let resolved: number;
@@ -654,7 +661,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             } else {
                 resolved = step.index < 0 ? current.length + step.index : step.index;
             }
-            descend(current, resolved, { ...ctx, path: [...ctx.path, resolved] });
+            descend(current, resolved, { ...ctx, path: [...ctx.path, seg.idx(resolved)] });
             break;
         }
         case "each": {
@@ -662,18 +669,18 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
                 const indices = matchingIndices(current, step.filters);
                 for (let j = 0; j < indices.length; j++) {
                     const i = indices[j];
-                    descend(current, i, { path: [...ctx.path, i], index: j, count: indices.length });
+                    descend(current, i, { path: [...ctx.path, seg.idx(i)], index: j, count: indices.length });
                 }
             } else {
                 for (let i = 0; i < current.length; i++) {
-                    descend(current, i, { path: [...ctx.path, i], index: i, count: current.length });
+                    descend(current, i, { path: [...ctx.path, seg.idx(i)], index: i, count: current.length });
                 }
             }
             break;
         }
         case "mapGet": {
             const map = current as Map<any, any>;
-            const childCtx = { ...ctx, path: [...ctx.path, String(step.key)] };
+            const childCtx = { ...ctx, path: [...ctx.path, seg.acc("get", String(step.key))] };
             if (atLeaf) map.set(step.key, updater(map.get(step.key), childCtx));
             else doMutate(map.get(step.key), steps, next, updater, childCtx);
             break;
@@ -682,7 +689,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             const read = current?.[LensSubAccess]?.[step.prop];
             const write = current?.[LensSubMutate]?.[step.prop];
             if (read && write) {
-                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}(${String(step.key)})`] };
+                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
                 if (atLeaf) write.call(current, step.key, updater(read.call(current, step.key), childCtx));
                 else write.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
             }
@@ -692,7 +699,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             const read = current?.[LensAccess]?.[step.prop];
             const write = current?.[LensMutate]?.[step.prop];
             if (read && write) {
-                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}()`] };
+                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
                 if (atLeaf) write.call(current, updater(read.call(current), childCtx));
                 else write.call(current, doApply(read.call(current), steps, next, updater, childCtx));
             }

@@ -28,6 +28,11 @@ export type DeepReadonly<T> = T extends Primitive
             ? ReadonlySet<DeepReadonly<U>>
             : { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
+export type LensPathSegment =
+    | { type: "property"; key: string }
+    | { type: "index"; index: number }
+    | { type: "accessor"; name: string; key?: string };
+
 export type TreeId = string;
 export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
 export type TreeItemOf<D> = { id: TreeId; parent: TreeId | null; children: TreeId[]; data: D };
