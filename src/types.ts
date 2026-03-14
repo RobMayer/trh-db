@@ -28,7 +28,7 @@ export type DeepReadonly<T> = T extends Primitive
             ? ReadonlySet<DeepReadonly<U>>
             : { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
-export type LensPathSegment = { type: "property"; key: string } | { type: "index"; index: number } | { type: "accessor"; name: string; key?: string };
+export type LensPathSegment = { type: "property"; key: string } | { type: "index"; index: number } | { type: "accessor"; name: string; args?: string[] };
 
 export type TreeId = string;
 export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
@@ -67,7 +67,6 @@ export const Equals = Symbol();
 export const TypeOf = Symbol();
 
 export const LensNav = Symbol();
-export const SubLensNav = Symbol();
 
 export interface Comparable {
     [Compare]: (other: unknown) => number; // -1, 0, 1
@@ -85,16 +84,14 @@ export interface Typeable {
     [TypeOf]: () => string;
 }
 
-// Custom lens accessors — named (no key param) and keyed (takes key param)
+// Custom lens accessors — object protocol with select/mutate?/apply?
 
-export interface LensNavigable<T extends { [method: string]: any }> {
+export interface LensNavigable {
     [LensNav]: {
-        [M in keyof T]: (hint: "select" | "mutate" | "apply", value?: T[M]) => any;
-    };
-}
-
-export interface SubLensNavigable<T extends { [method: string]: [any, any] }> {
-    [SubLensNav]: {
-        [M in keyof T]: (key: T[M][0], hint: "select" | "mutate" | "apply", value?: T[M][1]) => any;
+        [method: string]: {
+            select: (...args: any[]) => any;
+            mutate?: (...args: any[]) => any;
+            apply?: (...args: any[]) => any;
+        };
     };
 }

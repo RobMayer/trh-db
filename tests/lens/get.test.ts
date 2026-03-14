@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { SubLensNav, Contains, Containable } from "../../src/types";
+import { LensNav, Contains, Containable } from "../../src/types";
 
 // --- Test fixtures ---
 
@@ -152,6 +152,27 @@ describe("Lens.get", () => {
                 ],
             };
             expect(Lens.get(matrix, ($) => $("rows").each().each())).toEqual([1, 2, 3, 4, 5, 6]);
+        });
+
+        it("flattens with each() through property into nested array", () => {
+            const data = {
+                groups: [
+                    { items: ["a", "b", "c"] },
+                    { items: ["d", "e"] },
+                    { items: ["f", "g", "h", "i"] },
+                ],
+            };
+            expect(Lens.get(data, ($) => $("groups").each()("items").each())).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
+        });
+
+        it("flattens with triple-nested each", () => {
+            const cube = {
+                layers: [
+                    [[1, 2], [3, 4]],
+                    [[5, 6], [7, 8]],
+                ],
+            };
+            expect(Lens.get(cube, ($) => $("layers").each().each().each())).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
         });
 
         it("maps transform over each element", () => {
@@ -345,14 +366,12 @@ describe("Lens.get", () => {
             constructor(entries: Record<string, number>) {
                 this.#entries = entries;
             }
-            [SubLensNav] = {
-                lookup: (key: string, hint: string, value?: number) => {
-                    if (hint === "select") return this.#entries[key] ?? -1;
-                },
+            [LensNav] = {
+                lookup: { select: (key: string) => this.#entries[key] ?? -1 },
             };
         }
 
-        it("dispatches SubLensNav methods", () => {
+        it("dispatches keyed custom accessor", () => {
             const data = { reg: new Registry({ alpha: 10, beta: 20 }) };
             expect(Lens.get(data, ($) => ($("reg") as any).lookup("alpha"))).toBe(10);
             expect(Lens.get(data, ($) => ($("reg") as any).lookup("missing"))).toBe(-1);
@@ -363,14 +382,12 @@ describe("Lens.get", () => {
             constructor(data: Map<string, string>) {
                 this.#data = data;
             }
-            [SubLensNav] = {
-                fetch: (key: string, hint: string, value?: string | null) => {
-                    if (hint === "select") return this.#data.get(key) ?? null;
-                },
+            [LensNav] = {
+                fetch: { select: (key: string) => this.#data.get(key) ?? null },
             };
         }
 
-        it("dispatches SubLensNav keyed methods", () => {
+        it("dispatches keyed custom accessor (Map-backed)", () => {
             const data = { store: new ReadOnlyStore(new Map([["x", "hello"]])) };
             expect(Lens.get(data, ($) => ($("store") as any).fetch("x"))).toBe("hello");
             expect(Lens.get(data, ($) => ($("store") as any).fetch("y"))).toBeNull();
@@ -794,16 +811,14 @@ describe("Lens.get", () => {
             expect(result).toEqual([10, 40]);
         });
 
-        it("custom keyed accessor with lens arg", () => {
+        it("custom accessor with lens arg", () => {
             class Registry {
                 #entries: Record<string, number>;
                 constructor(entries: Record<string, number>) {
                     this.#entries = entries;
                 }
-                [SubLensNav] = {
-                    lookup: (key: string, hint: string, value?: number) => {
-                        if (hint === "select") return this.#entries[key] ?? -1;
-                    },
+                [LensNav] = {
+                    lookup: { select: (key: string) => this.#entries[key] ?? -1 },
                 };
             }
             const data = { which: "beta", reg: new Registry({ alpha: 10, beta: 20, gamma: 30 }) };
@@ -811,16 +826,14 @@ describe("Lens.get", () => {
             expect(result).toBe(20);
         });
 
-        it("custom keyed accessor with lens arg inside each()", () => {
+        it("custom accessor with lens arg inside each()", () => {
             class Store {
                 #data: Record<string, number>;
                 constructor(data: Record<string, number>) {
                     this.#data = data;
                 }
-                [SubLensNav] = {
-                    lookup: (key: string, hint: string, value?: number) => {
-                        if (hint === "select") return this.#data[key] ?? 0;
-                    },
+                [LensNav] = {
+                    lookup: { select: (key: string) => this.#data[key] ?? 0 },
                 };
             }
             const data = [
@@ -829,6 +842,211 @@ describe("Lens.get", () => {
             ];
             const result = Lens.get(data, ($) => $.each((el) => (el("store") as any).lookup(el("key"))));
             expect(result).toEqual([100, 400]);
+        });
+
+        it("multi-arg custom accessor", () => {
+            class Matrix {
+                #data: number[][];
+                constructor(data: number[][]) {
+                    this.#data = data;
+                }
+                [LensNav] = {
+                    cell: { select: (row: number, col: number) => this.#data[row][col] },
+                };
+            }
+            const data = { m: new Matrix([[1, 2], [3, 4]]) };
+            expect(Lens.get(data, ($) => ($("m") as any).cell(0, 1))).toBe(2);
+            expect(Lens.get(data, ($) => ($("m") as any).cell(1, 0))).toBe(3);
+        });
+
+        it("multi-arg custom accessor with lens args", () => {
+            class Matrix {
+                #data: number[][];
+                constructor(data: number[][]) {
+                    this.#data = data;
+                }
+                [LensNav] = {
+                    cell: { select: (row: number, col: number) => this.#data[row][col] },
+                };
+            }
+            const data = { row: 1, col: 0, m: new Matrix([[1, 2], [3, 4]]) };
+            const result = Lens.get(data, ($) => ($("m") as any).cell($("row"), $("col")));
+            expect(result).toBe(3);
+        });
+
+        it("zero-arg (named) custom accessor", () => {
+            class Counter {
+                #count: number;
+                constructor(count: number) {
+                    this.#count = count;
+                }
+                [LensNav] = {
+                    value: { select: () => this.#count },
+                };
+            }
+            const data = { c: new Counter(42) };
+            expect(Lens.get(data, ($) => ($("c") as any).value())).toBe(42);
+        });
+
+        it("chaining after custom accessor into nested property", () => {
+            class Container {
+                #inner: { label: string; count: number };
+                constructor(inner: { label: string; count: number }) {
+                    this.#inner = inner;
+                }
+                [LensNav] = {
+                    item: { select: (key: string) => this.#inner },
+                };
+            }
+            const data = { c: new Container({ label: "hello", count: 5 }) };
+            expect(Lens.get(data, ($) => ($("c") as any).item("x")("label"))).toBe("hello");
+            expect(Lens.get(data, ($) => ($("c") as any).item("x")("count"))).toBe(5);
+        });
+
+        it("mixed navigable and read-only accessors on same class", () => {
+            class Stats {
+                #values: number[];
+                constructor(values: number[]) {
+                    this.#values = values;
+                }
+                [LensNav] = {
+                    item: { select: (idx: number) => this.#values[idx] },
+                    sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
+                    avg: { select: () => this.#values.reduce((a, b) => a + b, 0) / this.#values.length },
+                };
+            }
+            const data = { s: new Stats([10, 20, 30]) };
+            expect(Lens.get(data, ($) => ($("s") as any).item(1))).toBe(20);
+            expect(Lens.get(data, ($) => ($("s") as any).sum())).toBe(60);
+            expect(Lens.get(data, ($) => ($("s") as any).avg())).toBe(20);
+        });
+
+        it("each() dispatches custom accessor per element", () => {
+            class Box {
+                #val: number;
+                constructor(val: number) {
+                    this.#val = val;
+                }
+                [LensNav] = {
+                    value: { select: () => this.#val },
+                };
+            }
+            const data = { boxes: [new Box(10), new Box(20), new Box(30)] };
+            const result = Lens.get(data, ($) => ($("boxes") as any).each().value());
+            expect(result).toEqual([10, 20, 30]);
+        });
+    });
+
+    // ================================================================
+    // Nested each() with callbacks
+    // ================================================================
+
+    describe("nested each() with callbacks", () => {
+        // Test data: each row has items (inner array) and a pointer
+        const grid = [
+            { label: "row1", items: ["a", "b", "c"], pointer: 2 },
+            { label: "row2", items: ["d", "e"], pointer: 0 },
+            { label: "row3", items: ["f", "g", "h", "i"], pointer: 1 },
+        ];
+
+        // Pattern 1: outer each(callback) containing inner each() (no callback)
+        // Navigate to each row's items, then flatten all items
+        // Expected: callback returns row("items").each() which is an array per row
+        // Outer collects those arrays with isEach=true, so we get a flat array
+        it("outer each(callback) + inner each(): flatten nested arrays", () => {
+            const result = Lens.get(grid, ($) => $.each((row) => row("items").each()));
+            expect(result).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
+        });
+
+        // Pattern 2: outer each() (no callback) + inner each(callback)
+        // $.each()("items") gives us the items arrays with isEach=true
+        // Then .each(callback) on each items array — but at this point the
+        // proxy's value is [["a","b","c"], ["d","e"], ["f","g","h","i"]] with isEach=true
+        // The inner each(callback) should iterate elements of each sub-array
+        it("outer each() + inner each(callback): per-element transform in nested arrays", () => {
+            const result = Lens.get(grid, ($) =>
+                $.each()("items").each((item) => item.size())
+            );
+            expect(result).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+        });
+
+        // Pattern 3: both each() calls use callbacks
+        // Outer callback gets each row, navigates to items, inner callback transforms each item
+        it("both each() with callbacks: nested callback transform", () => {
+            const result = Lens.get(grid, ($) =>
+                $.each((row) =>
+                    row("items").each((item) => item.size())
+                )
+            );
+            expect(result).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+        });
+
+        // Pattern 4: inner callback references outer element's lens
+        // Each row has items and a pointer — use the row's pointer to index into its own items
+        // This is the most interesting case: cross-referencing within nested each
+        it("inner callback referencing outer element lens", () => {
+            const data = [
+                { vals: [10, 20, 30], pick: 1 },
+                { vals: [40, 50], pick: 0 },
+                { vals: [60, 70, 80, 90], pick: 3 },
+            ];
+            const result = Lens.get(data, ($) =>
+                $.each((row) =>
+                    row("vals").each((item) => item)
+                )
+            );
+            // First: just verify nested each(callback) works with identity
+            expect(result).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90]);
+        });
+
+        // Pattern 4b: inner each uses outer lens to do dynamic indexing
+        // The outer row's "pointer" selects which item from each row's "vals"
+        // This is NOT a nested each — it's each(callback) with dynamic at() using outer lens
+        // (included here because it's the real use case motivating the cross-reference question)
+        it("each(callback) with dynamic at() from outer element lens (not nested each)", () => {
+            const data = [
+                { vals: [10, 20, 30], pick: 1 },
+                { vals: [40, 50], pick: 0 },
+                { vals: [60, 70, 80, 90], pick: 3 },
+            ];
+            const result = Lens.get(data, ($) =>
+                $.each((row) => row("vals").at(row("pick")))
+            );
+            expect(result).toEqual([20, 40, 90]);
+        });
+
+        // Pattern 5: truly nested — outer each(callback) returns inner each(callback)
+        // with the inner callback using the outer callback's element lens for indexing
+        it("inner each(callback) using outer element lens for at()", () => {
+            // Each group has a matrix of numbers and an index to pick from each row
+            const data = [
+                { matrix: [[1, 2, 3], [4, 5, 6]], colPick: 0 },
+                { matrix: [[7, 8], [9, 10]], colPick: 1 },
+            ];
+            const result = Lens.get(data, ($) =>
+                $.each((group) =>
+                    group("matrix").each((row) => row.at(group("colPick")))
+                )
+            );
+            // group 0: colPick=0, matrix rows [1,2,3] and [4,5,6] → picks index 0 → [1, 4]
+            // group 1: colPick=1, matrix rows [7,8] and [9,10] → picks index 1 → [8, 10]
+            // Flattened: [1, 4, 8, 10]
+            expect(result).toEqual([1, 4, 8, 10]);
+        });
+
+        // Pattern 6: outer each(callback), inner each(), chaining after
+        it("outer each(callback) + inner each() + chaining", () => {
+            const data = [
+                { tags: ["hello", "world"] },
+                { tags: ["foo"] },
+                { tags: ["ab", "cde", "fghi"] },
+            ];
+            const result = Lens.get(data, ($) =>
+                $.each((row) => row("tags").each()).size()
+            );
+            // each(callback) returns the tags flattened: ["hello", "world", "foo", "ab", "cde", "fghi"]
+            // Then .size() on each string in the flattened array
+            expect(result).toEqual([5, 5, 3, 2, 3, 4]);
         });
     });
 });

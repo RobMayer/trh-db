@@ -1,4 +1,4 @@
-import { SubLensNav, LensNav, AllStringKeys, SafeLookup, Comparable } from "../../types";
+import { LensNav, AllStringKeys, SafeLookup, Comparable } from "../../types";
 import { LogicalOps, PredicateResult } from "../logic";
 import { Predicate } from "../predicate";
 
@@ -72,16 +72,18 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
               size(): DataLens<never, WrapEval<Eval, Chain, number>, number>;
           }
         : {}) &
-    // Custom keyed (SubLensNav — navigable, carries Target)
-    (NonNullable<Chain> extends { [SubLensNav]: infer Methods }
-        ? {
-              [M in keyof Methods]: Methods[M] extends (key: infer KT, hint: any, value?: infer VT) => any ? (key: KT | SelectorLensOf<KT>) => DataLens<KeepTarget<Target, Chain, VT>, WrapEval<Eval, Chain, VT>, VT> : never;
-          }
-        : {}) &
-    // Custom named (LensNav — navigable, carries Target)
+    // Custom accessors (LensNav — object protocol with select/mutate?/apply?)
     (NonNullable<Chain> extends { [LensNav]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends (hint: any, value?: infer VT) => any ? () => DataLens<KeepTarget<Target, Chain, VT>, WrapEval<Eval, Chain, VT>, VT> : never;
+              [M in keyof Methods]: Methods[M] extends { select: (...args: infer A) => infer VT }
+                  ? (...args: MapSelectorLensOf<A>) => DataLens<
+                        Methods[M] extends { mutate: any } | { apply: any }
+                            ? KeepTarget<Target, Chain, VT>
+                            : never,
+                        WrapEval<Eval, Chain, VT>,
+                        VT
+                    >
+                  : never;
           }
         : {});
 
@@ -90,6 +92,9 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
 //#region - Helpers
 
 type ElementOf<T> = NonNullable<T> extends (infer E)[] | readonly (infer E)[] ? E : never;
+
+// Maps each tuple element T[K] to T[K] | SelectorLensOf<T[K]> — allows lens args at any position
+type MapSelectorLensOf<T extends any[]> = { [K in keyof T]: T[K] | SelectorLensOf<T[K]> };
 
 // Eval wrapping: if Eval ≠ Chain (after each()), wrap result in array
 type WrapEval<Eval, Chain, NewChain> = [Eval] extends [Chain] ? NewChain : NewChain[];

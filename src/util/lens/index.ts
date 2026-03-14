@@ -1,5 +1,5 @@
 import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf } from "./types";
-import { Compare, Contains, Equals, TypeOf, SubLensNav, LensNav, DeepReadonly, LensPathSegment } from "../../types";
+import { Compare, Contains, Equals, TypeOf, LensNav, DeepReadonly, LensPathSegment } from "../../types";
 
 //#region - Public API
 
@@ -45,8 +45,7 @@ type PathStep =
     | { type: "at"; index: number; filters?: FilterOp[] }
     | { type: "each"; filters?: FilterOp[]; callback?: Function }
     | { type: "mapGet"; key: unknown }
-    | { type: "customKeyed"; prop: string; key: unknown }
-    | { type: "customNamed"; prop: string };
+    | { type: "custom"; prop: string; args: unknown[] };
 
 type LensState = { value: unknown; isEach: boolean; path: PathStep[]; filters: FilterOp[] };
 
@@ -380,8 +379,9 @@ function createProxy(state: LensState): any {
                             const mapped = (arr ?? []).map((item: any) => {
                                 const elProxy = createProxy({ value: item, isEach: false, path: [], filters: [] });
                                 const result = callback(elProxy);
-                                return (result as any)[LENS].value;
-                            });
+                                const inner = (result as any)[LENS];
+                                return inner.isEach ? inner.value : [inner.value];
+                            }).flat(1);
                             return createProxy({
                                 value: mapped,
                                 isEach: true,
@@ -487,41 +487,28 @@ function createProxy(state: LensState): any {
 
             //#region - Custom accessor dispatch
             if (typeof prop === "string") {
-                // Keyed (SubLensNav)
-                const keyedDispatch = (v: any): ((key: any) => unknown) | undefined => {
-                    const handler = v?.[SubLensNav]?.[prop];
-                    return typeof handler === "function" ? (key: any) => handler.call(v, key, "select") : undefined;
+                // Custom accessors (LensNav — object protocol)
+                const customDispatch = (v: any): ((...args: any[]) => unknown) | undefined => {
+                    const accessor = v?.[LensNav]?.[prop];
+                    return accessor && typeof accessor.select === "function"
+                        ? (...args: any[]) => accessor.select(...args)
+                        : undefined;
                 };
 
                 if (isEach) {
-                    const hasAny = (value as any[]).some((v) => keyedDispatch(v));
+                    const hasAny = (value as any[]).some((v) => customDispatch(v));
                     if (hasAny)
-                        return (rawKey: any) => {
-                            const key = unwrap(rawKey);
-                            return createProxy({ value: (value as any[]).map((v) => keyedDispatch(v)?.(key)), isEach: true, path: [...path, { type: "customKeyed" as const, prop, key }], filters: [] });
+                        return (...rawArgs: any[]) => {
+                            const args = rawArgs.map(unwrap);
+                            return createProxy({ value: (value as any[]).map((v) => customDispatch(v)?.(...args)), isEach: true, path: [...path, { type: "custom" as const, prop, args }], filters: [] });
                         };
                 } else {
-                    const fn = keyedDispatch(value);
+                    const fn = customDispatch(value);
                     if (fn)
-                        return (rawKey: any) => {
-                            const key = unwrap(rawKey);
-                            return nav(() => fn(key), { type: "customKeyed", prop, key });
+                        return (...rawArgs: any[]) => {
+                            const args = rawArgs.map(unwrap);
+                            return nav(() => fn(...args), { type: "custom", prop, args });
                         };
-                }
-
-                // Named property (LensNav)
-                const namedDispatch = (v: any): (() => unknown) | undefined => {
-                    const handler = v?.[LensNav]?.[prop];
-                    return typeof handler === "function" ? () => handler.call(v, "select") : undefined;
-                };
-
-                if (isEach) {
-                    const hasAny = (value as any[]).some((v) => namedDispatch(v));
-                    if (hasAny)
-                        return () => createProxy({ value: (value as any[]).map((v) => namedDispatch(v)?.()), isEach: true, path: [...path, { type: "customNamed" as const, prop }], filters: [] });
-                } else {
-                    const fn = namedDispatch(value);
-                    if (fn) return () => nav(() => fn(), { type: "customNamed", prop });
                 }
             }
             //#endregion
@@ -592,7 +579,7 @@ function matchingIndices(arr: any[], ops: FilterOp[]): number[] {
 const seg = {
     prop: (key: string): LensPathSegment => ({ type: "property", key }),
     idx: (index: number): LensPathSegment => ({ type: "index", index }),
-    acc: (name: string, key?: string): LensPathSegment => (key !== undefined ? { type: "accessor", name, key } : { type: "accessor", name }),
+    acc: (name: string, ...args: string[]): LensPathSegment => (args.length > 0 ? { type: "accessor", name, args } : { type: "accessor", name }),
     fromPropStep: (key: string | number): LensPathSegment => (typeof key === "number" ? seg.idx(key) : seg.prop(key)),
 };
 
@@ -665,23 +652,13 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             map.set(step.key, doApply(map.get(step.key), steps, next, updater, childCtx));
             return map;
         }
-        case "customKeyed": {
-            const handler = current?.[SubLensNav]?.[step.prop];
-            if (handler) {
-                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
-                const readValue = handler.call(current, step.key, "select");
+        case "custom": {
+            const accessor = current?.[LensNav]?.[step.prop];
+            if (accessor?.select) {
+                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, ...step.args.map(String))] };
+                const readValue = accessor.select(...step.args);
                 const newValue = doApply(readValue, steps, next, updater, childCtx);
-                return handler.call(current, step.key, "apply", newValue) ?? current;
-            }
-            return current;
-        }
-        case "customNamed": {
-            const handler = current?.[LensNav]?.[step.prop];
-            if (handler) {
-                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
-                const readValue = handler.call(current, "select");
-                const newValue = doApply(readValue, steps, next, updater, childCtx);
-                return handler.call(current, "apply", newValue) ?? current;
+                return accessor.apply?.(newValue, ...step.args) ?? current;
             }
             return current;
         }
@@ -756,23 +733,13 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             else doMutate(map.get(step.key), steps, next, updater, childCtx);
             break;
         }
-        case "customKeyed": {
-            const handler = current?.[SubLensNav]?.[step.prop];
-            if (handler) {
-                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
-                const readValue = handler.call(current, step.key, "select");
-                if (atLeaf) handler.call(current, step.key, "mutate", updater(readValue, ctx.index, childCtx));
-                else handler.call(current, step.key, "mutate", doApply(readValue, steps, next, updater, childCtx));
-            }
-            break;
-        }
-        case "customNamed": {
-            const handler = current?.[LensNav]?.[step.prop];
-            if (handler) {
-                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
-                const readValue = handler.call(current, "select");
-                if (atLeaf) handler.call(current, "mutate", updater(readValue, ctx.index, childCtx));
-                else handler.call(current, "mutate", doApply(readValue, steps, next, updater, childCtx));
+        case "custom": {
+            const accessor = current?.[LensNav]?.[step.prop];
+            if (accessor?.select) {
+                const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, ...step.args.map(String))] };
+                const readValue = accessor.select(...step.args);
+                if (atLeaf) accessor.mutate?.(updater(readValue, ctx.index, childCtx), ...step.args);
+                else accessor.mutate?.(doApply(readValue, steps, next, updater, childCtx), ...step.args);
             }
             break;
         }

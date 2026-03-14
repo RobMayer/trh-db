@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensNav, SubLensNav } from "../../src/types";
+import { LensNav } from "../../src/types";
 
 // Path segment helpers for assertions
 const P = (key: string) => ({ type: "property" as const, key });
 const I = (index: number) => ({ type: "index" as const, index });
-const A = (name: string, key?: string) => (key !== undefined ? { type: "accessor" as const, name, key } : { type: "accessor" as const, name });
+const A = (name: string, ...args: string[]) => (args.length > 0 ? { type: "accessor" as const, name, args } : { type: "accessor" as const, name });
 
 // --- Test fixtures ---
 
@@ -353,18 +353,12 @@ describe("Lens.apply", () => {
                 return this.#y;
             }
             [LensNav] = {
-                x: (hint: string, value?: number) => {
-                    if (hint === "select") return this.#x;
-                    if (hint === "apply") return new Vector2(value!, this.#y);
-                },
-                y: (hint: string, value?: number) => {
-                    if (hint === "select") return this.#y;
-                    if (hint === "apply") return new Vector2(this.#x, value!);
-                },
+                x: { select: () => this.#x, apply: (value: number) => new Vector2(value, this.#y) },
+                y: { select: () => this.#y, apply: (value: number) => new Vector2(this.#x, value) },
             };
         }
 
-        it("applies via custom named accessor (LensNav) — returns new instance", () => {
+        it("applies via custom named accessor — returns new instance", () => {
             const data = { pos: new Vector2(3, 4) };
             const result = Lens.apply(data, ($) => ($("pos") as any).x(), 10);
             expect(result.pos.x).toBe(10);
@@ -388,19 +382,15 @@ describe("Lens.apply", () => {
             getVal(key: string) {
                 return this.#data[key];
             }
-            [SubLensNav] = {
-                lookup: (key: string, hint: string, value?: number) => {
-                    if (hint === "select") return this.#data[key];
-                    if (hint === "apply") {
-                        const next = new KeyedStore(this.#data);
-                        next.#data[key] = value!;
-                        return next;
-                    }
+            [LensNav] = {
+                lookup: {
+                    select: (key: string) => this.#data[key],
+                    apply: (value: number, key: string) => { const next = new KeyedStore(this.#data); next.#data[key] = value; return next; },
                 },
             };
         }
 
-        it("applies via custom keyed accessor (SubLensNav) — returns new instance", () => {
+        it("applies via custom keyed accessor — returns new instance", () => {
             const store = new KeyedStore({ alpha: 10, beta: 20 });
             const data = { store };
             const result = Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), 99);
@@ -408,6 +398,34 @@ describe("Lens.apply", () => {
             expect(result.store.getVal("beta")).toBe(20);
             expect(data.store.getVal("alpha")).toBe(10); // original unchanged
             expect(result.store).not.toBe(data.store); // new instance
+        });
+
+        it("applies via multi-arg custom accessor — returns new instance", () => {
+            class Matrix {
+                #data: number[][];
+                constructor(data: number[][]) {
+                    this.#data = data.map((r) => [...r]);
+                }
+                getCell(row: number, col: number) {
+                    return this.#data[row][col];
+                }
+                [LensNav] = {
+                    cell: {
+                        select: (row: number, col: number) => this.#data[row][col],
+                        apply: (value: number, row: number, col: number) => {
+                            const next = new Matrix(this.#data);
+                            next.#data[row][col] = value;
+                            return next;
+                        },
+                    },
+                };
+            }
+            const data = { m: new Matrix([[1, 2], [3, 4]]) };
+            const result = Lens.apply(data, ($) => ($("m") as any).cell(1, 0), 99);
+            expect(result.m.getCell(1, 0)).toBe(99);
+            expect(result.m.getCell(0, 1)).toBe(2); // unchanged
+            expect(data.m.getCell(1, 0)).toBe(3); // original unchanged
+            expect(result.m).not.toBe(data.m); // new instance
         });
     });
 
@@ -640,8 +658,8 @@ describe("Lens.apply", () => {
                 get x() { return this.#x; }
                 get y() { return this.#y; }
                 [LensNav] = {
-                    x: (hint: string, v?: number) => { if (hint === "select") return this.#x; if (hint === "apply") return new (this.constructor as any)(v, this.#y); },
-                    y: (hint: string, v?: number) => { if (hint === "select") return this.#y; if (hint === "apply") return new (this.constructor as any)(this.#x, v); },
+                    x: { select: () => this.#x, apply: (v: number) => new (this.constructor as any)(v, this.#y) },
+                    y: { select: () => this.#y, apply: (v: number) => new (this.constructor as any)(this.#x, v) },
                 };
             })() };
             let captured: Lens.Context | undefined;
@@ -656,7 +674,7 @@ describe("Lens.apply", () => {
             const data = { store: new (class {
                 #data: Record<string, number> = { alpha: 10, beta: 20 };
                 getVal(key: string) { return this.#data[key]; }
-                [SubLensNav] = { lookup: (key: string, hint: string, value?: number) => { if (hint === "select") return this.#data[key]; if (hint === "apply") { const n = new (this.constructor as any)(); n.#data = { ...this.#data, [key]: value }; return n; } } };
+                [LensNav] = { lookup: { select: (key: string) => this.#data[key], apply: (value: number, key: string) => { const n = new (this.constructor as any)(); n.#data = { ...this.#data, [key]: value }; return n; } } };
             })() };
             let captured: Lens.Context | undefined;
             Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), (prev, _i, ctx) => {
@@ -738,6 +756,158 @@ describe("Lens.apply", () => {
             const result = Lens.apply(data, ($) => $("prefs").get($("key")), 20);
             expect(result.prefs.get("fontSize")).toBe(20);
             expect(data.prefs.get("fontSize")).toBe(14); // original unchanged
+        });
+
+        it("custom keyed accessor with lens arg applies correctly", () => {
+            class Store {
+                #data: Record<string, number>;
+                constructor(data: Record<string, number>) { this.#data = { ...data }; }
+                getVal(key: string) { return this.#data[key]; }
+                [LensNav] = {
+                    lookup: {
+                        select: (key: string) => this.#data[key],
+                        apply: (value: number, key: string) => { const next = new Store(this.#data); next.#data[key] = value; return next; },
+                    },
+                };
+            }
+            const data = { which: "beta", store: new Store({ alpha: 10, beta: 20 }) };
+            const result = Lens.apply(data, ($) => ($("store") as any).lookup($("which")), 99);
+            expect(result.store.getVal("beta")).toBe(99);
+            expect(result.store.getVal("alpha")).toBe(10);
+            expect(data.store.getVal("beta")).toBe(20); // original unchanged
+        });
+
+        it("multi-arg custom accessor with lens args applies correctly", () => {
+            class Matrix {
+                #data: number[][];
+                constructor(data: number[][]) { this.#data = data.map((r) => [...r]); }
+                getCell(row: number, col: number) { return this.#data[row][col]; }
+                [LensNav] = {
+                    cell: {
+                        select: (row: number, col: number) => this.#data[row][col],
+                        apply: (value: number, row: number, col: number) => { const next = new Matrix(this.#data); next.#data[row][col] = value; return next; },
+                    },
+                };
+            }
+            const data = { row: 0, col: 1, m: new Matrix([[1, 2], [3, 4]]) };
+            const result = Lens.apply(data, ($) => ($("m") as any).cell($("row"), $("col")), 99);
+            expect(result.m.getCell(0, 1)).toBe(99);
+            expect(data.m.getCell(0, 1)).toBe(2); // original unchanged
+        });
+    });
+
+    describe("each(callback) with custom accessors", () => {
+        it("applies via each() + custom named accessor", () => {
+            class Box {
+                #val: number;
+                constructor(val: number) { this.#val = val; }
+                get val() { return this.#val; }
+                [LensNav] = {
+                    value: { select: () => this.#val, apply: (v: number) => new Box(v) },
+                };
+            }
+            const data = [new Box(10), new Box(20), new Box(30)];
+            const result = Lens.apply(data, ($) => ($ as any).each().value(), (prev: number) => prev + 1);
+            expect(result[0].val).toBe(11);
+            expect(result[1].val).toBe(21);
+            expect(result[2].val).toBe(31);
+            expect(data[0].val).toBe(10); // original unchanged
+        });
+
+        it("applies via each(callback) + keyed custom accessor with element-scoped lens arg", () => {
+            class Store {
+                #data: Record<string, number>;
+                constructor(data: Record<string, number>) { this.#data = { ...data }; }
+                getVal(key: string) { return this.#data[key]; }
+                [LensNav] = {
+                    lookup: {
+                        select: (key: string) => this.#data[key],
+                        apply: (value: number, key: string) => { const next = new Store(this.#data); next.#data[key] = value; return next; },
+                    },
+                };
+            }
+            const data = [
+                { key: "x", store: new Store({ x: 100, y: 200 }) },
+                { key: "y", store: new Store({ x: 300, y: 400 }) },
+            ];
+            const result = Lens.apply(data, ($) => $.each((el) => (el("store") as any).lookup(el("key"))), 0);
+            expect(result[0].store.getVal("x")).toBe(0);
+            expect(result[0].store.getVal("y")).toBe(200);
+            expect(result[1].store.getVal("y")).toBe(0);
+            expect(result[1].store.getVal("x")).toBe(300);
+            expect(data[0].store.getVal("x")).toBe(100); // original unchanged
+            expect(data[1].store.getVal("y")).toBe(400); // original unchanged
+        });
+
+        // --- Nested each(callback) ---
+
+        it("nested each(callback) + inner each(): applies to all nested items", () => {
+            const data = [
+                { items: ["a", "b", "c"] },
+                { items: ["d", "e"] },
+            ];
+            const result = Lens.apply(data, ($) => $.each((row) => row("items").each()), "x");
+            expect(result).toEqual([
+                { items: ["x", "x", "x"] },
+                { items: ["x", "x"] },
+            ]);
+            expect(data[0].items).toEqual(["a", "b", "c"]); // original unchanged
+        });
+
+        it("nested each(callback) + inner each(): applies with updater function", () => {
+            const data = [
+                { items: [1, 2, 3] },
+                { items: [4, 5] },
+            ];
+            const result = Lens.apply(data, ($) => $.each((row) => row("items").each()), (prev: number) => prev * 10);
+            expect(result).toEqual([
+                { items: [10, 20, 30] },
+                { items: [40, 50] },
+            ]);
+            expect(data[0].items).toEqual([1, 2, 3]); // original unchanged
+        });
+
+        it("both each() with callbacks: nested callback navigation", () => {
+            const data = [
+                { matrix: [[1, 2], [3, 4]] },
+                { matrix: [[5, 6]] },
+            ];
+            const result = Lens.apply(data, ($) => $.each((group) => group("matrix").each((row) => row.at(0))), 0);
+            expect(result).toEqual([
+                { matrix: [[0, 2], [0, 4]] },
+                { matrix: [[0, 6]] },
+            ]);
+            expect(data[0].matrix[0]).toEqual([1, 2]); // original unchanged
+        });
+
+        it("inner each(callback) using outer element lens for at()", () => {
+            const data = [
+                { matrix: [[1, 2, 3], [4, 5, 6]], colPick: 0 },
+                { matrix: [[7, 8], [9, 10]], colPick: 1 },
+            ];
+            const result = Lens.apply(data, ($) => $.each((group) => group("matrix").each((row) => row.at(group("colPick")))), 99);
+            expect(result).toEqual([
+                { matrix: [[99, 2, 3], [99, 5, 6]], colPick: 0 },
+                { matrix: [[7, 99], [9, 99]], colPick: 1 },
+            ]);
+            expect(data[0].matrix[0]).toEqual([1, 2, 3]); // original unchanged
+        });
+
+        it("read-only custom accessor returns unchanged copy when applied", () => {
+            class Stats {
+                #values: number[];
+                constructor(values: number[]) { this.#values = [...values]; }
+                getValues() { return [...this.#values]; }
+                [LensNav] = {
+                    sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
+                };
+            }
+            const data = { s: new Stats([10, 20, 30]) };
+            // no apply handler, so the accessor returns current (no replacement)
+            const result = Lens.apply(data, ($) => ($("s") as any).sum(), 999);
+            expect(result.s.getValues()).toEqual([10, 20, 30]); // no change
+            // the spine is still shallow-copied above the accessor
+            expect(result).not.toBe(data);
         });
     });
 });

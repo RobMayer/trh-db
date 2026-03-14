@@ -1,4 +1,4 @@
-import { SubLensNavigable, SubLensNav } from "../src/types";
+import { LensNavigable, LensNav } from "../src/types";
 import { DataLens, SelectorLens, MutatorLensOf, ApplierLensOf } from "../src/util/lens/types";
 
 // ============================================================
@@ -83,11 +83,11 @@ const nu_label: SelectorLens<string | undefined> = nu$("meta")("label");
 // Optional Field Support
 // ============================================================
 
-class Example implements SubLensNavigable<{ link: [string, string]; node: [string, number]; has: [string, boolean] }> {
-    [SubLensNav] = {
-        link: (key: string, hint: string, value?: string) => { if (hint === "select") return "hi"; },
-        node: (key: string, hint: string, value?: number) => { if (hint === "select") return 0; },
-        has: (key: string, hint: string, value?: boolean) => { if (hint === "select") return false; },
+class Example implements LensNavigable {
+    [LensNav] = {
+        link: { select: (key: string) => "hi" as string, mutate: (value: string, key: string) => {} },
+        node: { select: (key: string) => 0 as number, mutate: (value: number, key: string) => {} },
+        has: { select: (key: string) => false as boolean },
     };
 }
 
@@ -255,3 +255,40 @@ testMutate(eachTestData, ($) => $("addresses").each((el) => el("type").size()), 
 
 // each(callback) apply with mutable path
 testApply(eachTestData, ($) => $("addresses").each((el) => el("type")), "new");
+
+// ============================================================
+// Custom accessor (LensNav) — type-level tests
+// ============================================================
+
+// Navigable accessor (has mutate) — valid mutation terminal
+testMutate(optTestData, ($) => $("someExample").link("test"), "new");
+testMutate(optTestData, ($) => $("someExample").node("test"), 42);
+
+// Read-only accessor (no mutate/apply) — Target = never, rejected
+// @ts-expect-error — .has() accessor has no mutate/apply
+testMutate(optTestData, ($) => $("someExample").has("test"), true);
+// @ts-expect-error — .has() accessor has no mutate/apply
+testApply(optTestData, ($) => $("someExample").has("test"), true);
+
+// Multi-arg custom accessor type test
+class MultiArgExample implements LensNavigable {
+    [LensNav] = {
+        cell: { select: (row: number, col: number) => 0 as number, mutate: (value: number, row: number, col: number) => {} },
+        computed: { select: (row: number, col: number) => "" as string },
+    };
+}
+
+type MultiArgData = { m: MultiArgExample };
+declare const ma$: SelectorLens<MultiArgData>;
+
+// Multi-arg accessor returns correct value type
+const ma_cell: SelectorLens<number> = ma$("m").cell(0, 1);
+const ma_computed: SelectorLens<string> = ma$("m").computed(0, 1);
+
+// Multi-arg navigable accessor — valid mutation terminal
+declare const maData: MultiArgData;
+testMutate(maData, ($) => $("m").cell(0, 1), 99);
+
+// Multi-arg read-only accessor — rejected
+// @ts-expect-error — computed has no mutate/apply
+testMutate(maData, ($) => $("m").computed(0, 1), "x");
