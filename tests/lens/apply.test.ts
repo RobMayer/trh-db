@@ -537,7 +537,7 @@ describe("Lens.apply", () => {
         it("provides path for simple property access", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => $("address")("city"), (prev, ctx) => {
+            Lens.apply(data, ($) => $("address")("city"), (prev, _i, ctx) => {
                 captured = ctx;
                 return "Seattle";
             });
@@ -549,7 +549,7 @@ describe("Lens.apply", () => {
         it("provides index and count for each", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.apply(data, ($) => $.each()("name"), (prev, ctx) => {
+            Lens.apply(data, ($) => $.each()("name"), (prev, _i, ctx) => {
                 contexts.push(ctx);
                 return prev;
             });
@@ -561,7 +561,7 @@ describe("Lens.apply", () => {
         it("provides index and count for filtered each", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev, ctx) => {
+            Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev, _i, ctx) => {
                 contexts.push(ctx);
                 return prev;
             });
@@ -573,7 +573,7 @@ describe("Lens.apply", () => {
         it("provides path through nested each (2D) with structural sharing", () => {
             const data = makeMatrix();
             const paths: any[][] = [];
-            const result = Lens.apply(data, ($) => $("rows").each().each()("val"), (prev, ctx) => {
+            const result = Lens.apply(data, ($) => $("rows").each().each()("val"), (prev, _i, ctx) => {
                 paths.push([...ctx.path]);
                 return prev * 10;
             });
@@ -592,7 +592,7 @@ describe("Lens.apply", () => {
         it("root replacement provides empty path", () => {
             const data = { x: 1 };
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => $, (prev, ctx) => {
+            Lens.apply(data, ($) => $, (prev, _i, ctx) => {
                 captured = ctx;
                 return { x: 2 };
             });
@@ -604,7 +604,7 @@ describe("Lens.apply", () => {
         it("at() with negative index shows resolved positive index in path", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => $("scores").at(-1), (prev, ctx) => {
+            Lens.apply(data, ($) => $("scores").at(-1), (prev, _i, ctx) => {
                 captured = ctx;
                 return 0;
             });
@@ -614,7 +614,7 @@ describe("Lens.apply", () => {
         it("at() after filter provides index 0, count 1", () => {
             const data = makeTeam();
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, ctx) => {
+            Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, _i, ctx) => {
                 captured = ctx;
                 return "FIRST";
             });
@@ -625,7 +625,7 @@ describe("Lens.apply", () => {
         it("Map .get() shows stringified key in path", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => $("prefs").get("fontSize"), (prev, ctx) => {
+            Lens.apply(data, ($) => $("prefs").get("fontSize"), (prev, _i, ctx) => {
                 captured = ctx;
                 return 16;
             });
@@ -641,7 +641,7 @@ describe("Lens.apply", () => {
                 [LensApply] = { x: (v: number) => new (this.constructor as any)(v, this.#y), y: (v: number) => new (this.constructor as any)(this.#x, v) };
             })() };
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => ($("pos") as any).x(), (prev, ctx) => {
+            Lens.apply(data, ($) => ($("pos") as any).x(), (prev, _i, ctx) => {
                 captured = ctx;
                 return 10;
             });
@@ -656,7 +656,7 @@ describe("Lens.apply", () => {
                 [LensSubApply] = { lookup: (key: string, value: number) => { const n = new (this.constructor as any)(); n.#data = { ...this.#data, [key]: value }; return n; } };
             })() };
             let captured: Lens.Context | undefined;
-            Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), (prev, ctx) => {
+            Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), (prev, _i, ctx) => {
                 captured = ctx;
                 return 99;
             });
@@ -666,7 +666,7 @@ describe("Lens.apply", () => {
         it("sort + each provides sorted iteration with correct index and count", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.apply(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, ctx) => {
+            Lens.apply(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, _i, ctx) => {
                 contexts.push({ ...ctx, path: [...ctx.path] });
                 return prev;
             });

@@ -558,7 +558,7 @@ describe("Lens.mutate", () => {
         it("provides path for simple property access", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("address")("city"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $("address")("city"), (prev, _i, ctx) => {
                 captured = ctx;
                 return "Seattle";
             });
@@ -570,7 +570,7 @@ describe("Lens.mutate", () => {
         it("provides path with numeric index", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("scores")(2), (prev, ctx) => {
+            Lens.mutate(data, ($) => $("scores")(2), (prev, _i, ctx) => {
                 captured = ctx;
                 return 0;
             });
@@ -580,7 +580,7 @@ describe("Lens.mutate", () => {
         it("provides index and count for each", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $.each()("name"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $.each()("name"), (prev, _i, ctx) => {
                 contexts.push(ctx);
                 return prev;
             });
@@ -594,7 +594,7 @@ describe("Lens.mutate", () => {
         it("provides index and count for filtered each", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev, _i, ctx) => {
                 contexts.push(ctx);
                 return prev;
             });
@@ -607,7 +607,7 @@ describe("Lens.mutate", () => {
         it("provides path for at() after filter", () => {
             const data = makeTeam();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, _i, ctx) => {
                 captured = ctx;
                 return "FIRST";
             });
@@ -617,7 +617,7 @@ describe("Lens.mutate", () => {
         it("provides path through nested each (2D)", () => {
             const data = makeMatrix();
             const paths: any[][] = [];
-            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev, _i, ctx) => {
                 paths.push([...ctx.path]);
                 return prev;
             });
@@ -634,7 +634,7 @@ describe("Lens.mutate", () => {
         it("inner each resets index and count", () => {
             const data = makeMatrix();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev, _i, ctx) => {
                 contexts.push({ ...ctx, path: [...ctx.path] });
                 return prev;
             });
@@ -650,9 +650,9 @@ describe("Lens.mutate", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
             // sort by age asc: Alice(25)→0, Carol(28)→2, Bob(35)→1, Dave(40)→3
-            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, _i, ctx) => {
                 contexts.push({ ...ctx, path: [...ctx.path] });
-                return `rank-${ctx.index}`;
+                return `rank-${_i}`;
             });
             expect(contexts).toHaveLength(4);
             // Sorted order: Alice(idx 0), Carol(idx 2), Bob(idx 1), Dave(idx 3)
@@ -669,7 +669,7 @@ describe("Lens.mutate", () => {
         it("at() with negative index shows resolved positive index in path", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("scores").at(-1), (prev, ctx) => {
+            Lens.mutate(data, ($) => $("scores").at(-1), (prev, _i, ctx) => {
                 captured = ctx;
                 return 0;
             });
@@ -679,7 +679,7 @@ describe("Lens.mutate", () => {
         it("at() after filter provides index 0, count 1", () => {
             const data = makeTeam();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, _i, ctx) => {
                 captured = ctx;
                 return "FIRST";
             });
@@ -690,7 +690,7 @@ describe("Lens.mutate", () => {
         it("Map .get() shows stringified key in path", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("prefs").get("fontSize"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $("prefs").get("fontSize"), (prev, _i, ctx) => {
                 captured = ctx;
                 return 16;
             });
@@ -706,7 +706,7 @@ describe("Lens.mutate", () => {
                 [LensMutate] = { x: (v: number) => { this.#x = v; }, y: (v: number) => { this.#y = v; } };
             })() };
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => ($("pos") as any).x(), (prev, ctx) => {
+            Lens.mutate(data, ($) => ($("pos") as any).x(), (prev, _i, ctx) => {
                 captured = ctx;
                 return 10;
             });
@@ -721,7 +721,7 @@ describe("Lens.mutate", () => {
                 [LensSubMutate] = { lookup: (key: string, value: number) => { this.#data[key] = value; } };
             })() };
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => ($("store") as any).lookup("alpha"), (prev, ctx) => {
+            Lens.mutate(data, ($) => ($("store") as any).lookup("alpha"), (prev, _i, ctx) => {
                 captured = ctx;
                 return 99;
             });
@@ -731,7 +731,7 @@ describe("Lens.mutate", () => {
         it("sort + each count reflects sorted set size", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, ctx) => {
+            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, _i, ctx) => {
                 contexts.push({ ...ctx, path: [...ctx.path] });
                 return prev;
             });

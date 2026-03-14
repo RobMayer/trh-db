@@ -12,21 +12,21 @@ export namespace Lens {
 
     export type Context = { path: LensPathSegment[]; index: number; count: number };
 
-    export const mutate = <D, R>(data: D, lens: ($: MutatorLens<D>) => MutatorLensOf<R>, value: R | ((prev: R, context: Lens.Context) => R)): void => {
+    export const mutate = <D, R>(data: D, lens: ($: MutatorLens<D>) => MutatorLensOf<R>, value: R | ((prev: R, index: number, context: Lens.Context) => R)): void => {
         const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
         const result = lens(proxy as any);
         const { path } = (result as any)[LENS] as LensState;
         if (path.length === 0) return; // can't replace root by reference
-        const updater = typeof value === "function" ? (value as (prev: R, context: Lens.Context) => R) : () => value;
+        const updater = typeof value === "function" ? (value as (prev: R, index: number, context: Lens.Context) => R) : () => value;
         doMutate(data, path, 0, updater as any, { path: [], index: 0, count: 1 });
     };
 
-    export const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: DeepReadonly<R>, context: Lens.Context) => R)): D => {
+    export const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: DeepReadonly<R>, index: number, context: Lens.Context) => R)): D => {
         const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
         const result = lens(proxy as any);
         const { path } = (result as any)[LENS] as LensState;
-        const updater = typeof value === "function" ? (value as (prev: R, context: Lens.Context) => R) : () => value;
-        if (path.length === 0) return updater(data as any, { path: [], index: 0, count: 1 }) as any;
+        const updater = typeof value === "function" ? (value as (prev: R, index: number, context: Lens.Context) => R) : () => value;
+        if (path.length === 0) return updater(data as any, 0, { path: [], index: 0, count: 1 }) as any;
         return doApply(data, path, 0, updater as any, { path: [], index: 0, count: 1 });
     };
 }
@@ -565,8 +565,8 @@ const seg = {
     fromPropStep: (key: string | number): LensPathSegment => (typeof key === "number" ? seg.idx(key) : seg.prop(key)),
 };
 
-function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: any, ctx: Lens.Context) => any, ctx: Lens.Context): any {
-    if (idx >= steps.length) return updater(current, ctx);
+function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: any, index: number, ctx: Lens.Context) => any, ctx: Lens.Context): any {
+    if (idx >= steps.length) return updater(current, ctx.index, ctx);
 
     const step = steps[idx];
     const next = idx + 1;
@@ -637,14 +637,14 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
     }
 }
 
-function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: any, ctx: Lens.Context) => any, ctx: Lens.Context): void {
+function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: any, index: number, ctx: Lens.Context) => any, ctx: Lens.Context): void {
     const step = steps[idx];
     const next = idx + 1;
     const atLeaf = next >= steps.length;
 
     // For plain property/index steps, descend or apply at leaf
     const descend = (parent: any, key: string | number, childCtx: Lens.Context) => {
-        if (atLeaf) parent[key] = updater(parent[key], childCtx);
+        if (atLeaf) parent[key] = updater(parent[key], childCtx.index, childCtx);
         else doMutate(parent[key], steps, next, updater, childCtx);
     };
 
@@ -681,7 +681,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
         case "mapGet": {
             const map = current as Map<any, any>;
             const childCtx = { ...ctx, path: [...ctx.path, seg.acc("get", String(step.key))] };
-            if (atLeaf) map.set(step.key, updater(map.get(step.key), childCtx));
+            if (atLeaf) map.set(step.key, updater(map.get(step.key), ctx.index, childCtx));
             else doMutate(map.get(step.key), steps, next, updater, childCtx);
             break;
         }
@@ -690,7 +690,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             const write = current?.[LensSubMutate]?.[step.prop];
             if (read && write) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, String(step.key))] };
-                if (atLeaf) write.call(current, step.key, updater(read.call(current, step.key), childCtx));
+                if (atLeaf) write.call(current, step.key, updater(read.call(current, step.key), ctx.index, childCtx));
                 else write.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
             }
             break;
@@ -700,7 +700,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             const write = current?.[LensMutate]?.[step.prop];
             if (read && write) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop)] };
-                if (atLeaf) write.call(current, updater(read.call(current), childCtx));
+                if (atLeaf) write.call(current, updater(read.call(current), ctx.index, childCtx));
                 else write.call(current, doApply(read.call(current), steps, next, updater, childCtx));
             }
             break;
