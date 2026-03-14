@@ -54,6 +54,7 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
             : {
                   keys(): DataLens<never, WrapEval<Eval, Chain, string[]>, string[]>;
                   values(): DataLens<never, WrapEval<Eval, Chain, V[]>, V[]>;
+                  entries(): DataLens<never, WrapEval<Eval, Chain, [string, V][]>, [string, V][]>;
                   size(): DataLens<never, WrapEval<Eval, Chain, number>, number>;
               }
         : {}) &
@@ -69,6 +70,9 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
         ? {
               get(key: MK | SelectorLensOf<MK>): DataLens<KeepTarget<Target, Chain, MV>, WrapEval<Eval, Chain, MV>, MV>;
               has(key: MK | SelectorLensOf<MK>): DataLens<never, WrapEval<Eval, Chain, boolean>, boolean>;
+              keys(): DataLens<never, WrapEval<Eval, Chain, MK[]>, MK[]>;
+              values(): DataLens<never, WrapEval<Eval, Chain, MV[]>, MV[]>;
+              entries(): DataLens<never, WrapEval<Eval, Chain, [MK, MV][]>, [MK, MV][]>;
               size(): DataLens<never, WrapEval<Eval, Chain, number>, number>;
           }
         : {}) &

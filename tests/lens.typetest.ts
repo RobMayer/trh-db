@@ -52,6 +52,9 @@ const l_nested_keys: SelectorLens<string[]> = $("nested").keys();
 // .values() — objects
 const l_nested_values: SelectorLens<(number | string[])[]> = $("nested").values();
 
+// .entries() — objects
+const l_nested_entries: SelectorLens<[string, number | string[]][]> = $("nested").entries();
+
 // ============================================================
 // Discriminated Union Support
 // ============================================================
@@ -115,6 +118,9 @@ const o_date: SelectorLens<() => number> = o$("someDate")("getDay");
 const o_score: SelectorLens<number | undefined> = o$("score");
 const o_tags: SelectorLens<string[] | undefined> = o$("tags");
 const o_mapNumber: SelectorLens<number> = o$("someMap").get("someKey");
+const o_mapKeys: SelectorLens<string[]> = o$("someMap").keys();
+const o_mapValues: SelectorLens<number[]> = o$("someMap").values();
+const o_mapEntries: SelectorLens<[string, number][]> = o$("someMap").entries();
 
 // Nested optional
 const o_label: SelectorLens<string | undefined> = o$("nested")("label");
@@ -210,8 +216,16 @@ testMutate(testData, ($) => $("name").transform((s) => s.length), 5);
 testMutate(testData, ($) => $("nested").keys(), ["a"]);
 // @ts-expect-error — .values() is read-only
 testMutate(testData, ($) => $("nested").values(), [1]);
+// @ts-expect-error — object .entries() is read-only
+testMutate(testData, ($) => $("nested").entries(), [["a", 1]]);
 // @ts-expect-error — .has() is read-only
 testMutate(optTestData, ($) => $("someMap").has("key"), true);
+// @ts-expect-error — Map .keys() is read-only
+testMutate(optTestData, ($) => $("someMap").keys(), ["a"]);
+// @ts-expect-error — Map .values() is read-only
+testMutate(optTestData, ($) => $("someMap").values(), [1]);
+// @ts-expect-error — Map .entries() is read-only
+testMutate(optTestData, ($) => $("someMap").entries(), [["a", 1]]);
 // @ts-expect-error — string .size() is read-only
 testMutate(testData, ($) => $("name").size(), 3);
 // @ts-expect-error — .size() after .each() is read-only
@@ -292,3 +306,66 @@ testMutate(maData, ($) => $("m").cell(0, 1), 99);
 // Multi-arg read-only accessor — rejected
 // @ts-expect-error — computed has no mutate/apply
 testMutate(maData, ($) => $("m").computed(0, 1), "x");
+
+// ============================================================
+// Dynamic Lens References — type-level tests
+// ============================================================
+
+type DynData = {
+    idx: number;
+    key: string;
+    items: string[];
+    nested: { pick: number; vals: number[] };
+    tags: Set<string>;
+    prefs: Map<string, number>;
+    matrix: number[][];
+};
+
+declare const d$: SelectorLens<DynData>;
+declare const dynData: DynData;
+
+// --- $(index) with lens arg ---
+const d_item_by_lens: SelectorLens<string> = d$("items")(d$("idx"));
+
+// --- at() with lens arg ---
+const d_item_at_lens: SelectorLens<string> = d$("items").at(d$("idx"));
+
+// --- at() with lens arg from nested path ---
+const d_nested_at: SelectorLens<number> = d$("nested")("vals").at(d$("nested")("pick"));
+
+// --- Map.get() with lens arg ---
+const d_map_get_lens: SelectorLens<number> = d$("prefs").get(d$("key"));
+
+// --- Map.has() with lens arg ---
+const d_map_has_lens: SelectorLens<boolean> = d$("prefs").has(d$("key"));
+
+// --- Set.has() with lens arg ---
+const d_set_has_lens: SelectorLens<boolean> = d$("tags").has(d$("key"));
+
+// --- slice() with lens args ---
+const d_slice_lens: SelectorLens<string[]> = d$("items").slice(d$("idx"), d$("idx"));
+
+// --- Lens args in mutation context — should compile ---
+testMutate(dynData, ($) => $("items").at($("idx")), "new");
+testMutate(dynData, ($) => $("items")($("idx")), "new");
+testMutate(dynData, ($) => $("prefs").get($("key")), 42);
+
+// --- Lens args in apply context — should compile ---
+testApply(dynData, ($) => $("items").at($("idx")), "new");
+testApply(dynData, ($) => $("prefs").get($("key")), 42);
+
+// --- Lens arg in each(callback) — element lens as arg ---
+type CbData = { rows: { vals: number[]; pick: number }[] };
+declare const cb$: SelectorLens<CbData>;
+const d_each_cb_at: DataLens<number, number[], number> = cb$("rows").each((row) => row("vals").at(row("pick")));
+
+// --- Custom accessor with lens arg ---
+const d_custom_lens: SelectorLens<string> = o$("someExample").link(o$("name"));
+const d_custom_node: SelectorLens<number> = o$("someExample").node(o$("name"));
+
+// --- Multi-arg custom accessor with lens args ---
+const d_ma_cell_lens: SelectorLens<number> = ma$("m").cell(d$("idx"), d$("idx"));
+
+// --- Mutation with custom accessor lens arg — should compile ---
+testMutate(optTestData, ($) => $("someExample").link($("name")), "new");
+testMutate(maData, ($) => $("m").cell(d$("idx"), d$("idx")), 99);

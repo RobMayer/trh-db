@@ -92,13 +92,17 @@ describe("Lens.get", () => {
         });
     });
 
-    describe("keys and values", () => {
+    describe("keys, values, entries", () => {
         it("returns object keys", () => {
             expect(Lens.get(person, ($) => $("address").keys())).toEqual(["city", "zip"]);
         });
 
         it("returns object values", () => {
             expect(Lens.get(person, ($) => $("address").values())).toEqual(["Portland", "97201"]);
+        });
+
+        it("returns object entries", () => {
+            expect(Lens.get(person, ($) => $("address").entries())).toEqual([["city", "Portland"], ["zip", "97201"]]);
         });
     });
 
@@ -116,6 +120,18 @@ describe("Lens.get", () => {
         it("checks Set has", () => {
             expect(Lens.get(person, ($) => $("tags").has("dev"))).toBe(true);
             expect(Lens.get(person, ($) => $("tags").has("qa"))).toBe(false);
+        });
+
+        it("returns Map keys", () => {
+            expect(Lens.get(person, ($) => $("prefs").keys())).toEqual(["theme", "fontSize"]);
+        });
+
+        it("returns Map values", () => {
+            expect(Lens.get(person, ($) => $("prefs").values())).toEqual([1, 14]);
+        });
+
+        it("returns Map entries", () => {
+            expect(Lens.get(person, ($) => $("prefs").entries())).toEqual([["theme", 1], ["fontSize", 14]]);
         });
     });
 

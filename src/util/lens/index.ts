@@ -395,11 +395,28 @@ function createProxy(state: LensState): any {
                     };
                 //#endregion
 
-                //#region - Object accessors
+                //#region - Object / Map accessors
                 case "keys":
-                    return () => apply((v: any) => (v != null && typeof v === "object" ? Object.keys(v) : []));
+                    return () =>
+                        apply((v: any) => {
+                            if (v instanceof Map) return [...v.keys()];
+                            if (v != null && typeof v === "object") return Object.keys(v);
+                            return [];
+                        });
                 case "values":
-                    return () => apply((v: any) => (v != null && typeof v === "object" ? Object.values(v) : []));
+                    return () =>
+                        apply((v: any) => {
+                            if (v instanceof Map) return [...v.values()];
+                            if (v != null && typeof v === "object") return Object.values(v);
+                            return [];
+                        });
+                case "entries":
+                    return () =>
+                        apply((v: any) => {
+                            if (v instanceof Map) return [...v.entries()];
+                            if (v != null && typeof v === "object") return Object.entries(v);
+                            return [];
+                        });
                 //#endregion
 
                 //#region - Map / Set
