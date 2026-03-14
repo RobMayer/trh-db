@@ -10,22 +10,24 @@ export namespace Lens {
         return (result as any)[LENS].value;
     };
 
-    export const mutate = <D, R>(data: D, lens: ($: MutatorLens<D>) => MutatorLensOf<R>, value: R | ((prev: R) => R)): void => {
+    export type Context = { path: (string | number)[]; index: number; count: number };
+
+    export const mutate = <D, R>(data: D, lens: ($: MutatorLens<D>) => MutatorLensOf<R>, value: R | ((prev: R, context: Lens.Context) => R)): void => {
         const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
         const result = lens(proxy as any);
         const { path } = (result as any)[LENS] as LensState;
         if (path.length === 0) return; // can't replace root by reference
-        const updater = typeof value === "function" ? (value as (prev: R) => R) : () => value;
-        doMutate(data, path, 0, updater as any);
+        const updater = typeof value === "function" ? (value as (prev: R, context: Lens.Context) => R) : () => value;
+        doMutate(data, path, 0, updater as any, { path: [], index: 0, count: 1 });
     };
 
-    export const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: DeepReadonly<R>) => R)): D => {
+    export const apply = <D, R>(data: D, lens: ($: ApplierLens<D>) => ApplierLensOf<R>, value: R | ((prev: DeepReadonly<R>, context: Lens.Context) => R)): D => {
         const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
         const result = lens(proxy as any);
         const { path } = (result as any)[LENS] as LensState;
-        const updater = typeof value === "function" ? (value as (prev: R) => R) : () => value;
-        if (path.length === 0) return updater(data as any) as any;
-        return doApply(data, path, 0, updater as any);
+        const updater = typeof value === "function" ? (value as (prev: R, context: Lens.Context) => R) : () => value;
+        if (path.length === 0) return updater(data as any, { path: [], index: 0, count: 1 }) as any;
+        return doApply(data, path, 0, updater as any, { path: [], index: 0, count: 1 });
     };
 }
 
@@ -556,15 +558,16 @@ function matchingIndices(arr: any[], ops: FilterOp[]): number[] {
     return indices;
 }
 
-function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: any) => any): any {
-    if (idx >= steps.length) return updater(current);
+function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: any, ctx: Lens.Context) => any, ctx: Lens.Context): any {
+    if (idx >= steps.length) return updater(current, ctx);
 
     const step = steps[idx];
     const next = idx + 1;
 
     switch (step.type) {
         case "prop": {
-            const child = doApply(current[step.key], steps, next, updater);
+            const childCtx = { ...ctx, path: [...ctx.path, step.key] };
+            const child = doApply(current[step.key], steps, next, updater, childCtx);
             if (Array.isArray(current)) {
                 const result = [...current];
                 result[step.key as number] = child;
@@ -581,7 +584,8 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             } else {
                 resolved = step.index < 0 ? current.length + step.index : step.index;
             }
-            const child = doApply(current[resolved], steps, next, updater);
+            const childCtx = { ...ctx, path: [...ctx.path, resolved] };
+            const child = doApply(current[resolved], steps, next, updater, childCtx);
             const result = [...current];
             result[resolved] = child;
             return result;
@@ -590,45 +594,56 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             if (step.filters?.length) {
                 const indices = matchingIndices(current, step.filters);
                 const result = [...current];
-                for (const i of indices) result[i] = doApply(current[i], steps, next, updater);
+                for (let j = 0; j < indices.length; j++) {
+                    const i = indices[j];
+                    const childCtx = { path: [...ctx.path, i], index: j, count: indices.length };
+                    result[i] = doApply(current[i], steps, next, updater, childCtx);
+                }
                 return result;
             }
-            return (current as any[]).map((item: any) => doApply(item, steps, next, updater));
+            return (current as any[]).map((item: any, j: number) => doApply(item, steps, next, updater, { path: [...ctx.path, j], index: j, count: current.length }));
         }
         case "mapGet": {
             const map = new Map(current as Map<any, any>);
-            map.set(step.key, doApply(map.get(step.key), steps, next, updater));
+            const childCtx = { ...ctx, path: [...ctx.path, String(step.key)] };
+            map.set(step.key, doApply(map.get(step.key), steps, next, updater, childCtx));
             return map;
         }
         case "customKeyed": {
             const read = current?.[LensSubAccess]?.[step.prop];
             const applyFn = current?.[LensSubApply]?.[step.prop];
-            if (read && applyFn) return applyFn.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater));
+            if (read && applyFn) {
+                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}(${String(step.key)})`] };
+                return applyFn.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
+            }
             return current;
         }
         case "customNamed": {
             const read = current?.[LensAccess]?.[step.prop];
             const applyFn = current?.[LensApply]?.[step.prop];
-            if (read && applyFn) return applyFn.call(current, doApply(read.call(current), steps, next, updater));
+            if (read && applyFn) {
+                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}()`] };
+                return applyFn.call(current, doApply(read.call(current), steps, next, updater, childCtx));
+            }
             return current;
         }
     }
 }
 
-function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: any) => any): void {
+function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: any, ctx: Lens.Context) => any, ctx: Lens.Context): void {
     const step = steps[idx];
     const next = idx + 1;
     const atLeaf = next >= steps.length;
 
     // For plain property/index steps, descend or apply at leaf
-    const descend = (parent: any, key: string | number) => {
-        if (atLeaf) parent[key] = updater(parent[key]);
-        else doMutate(parent[key], steps, next, updater);
+    const descend = (parent: any, key: string | number, childCtx: Lens.Context) => {
+        if (atLeaf) parent[key] = updater(parent[key], childCtx);
+        else doMutate(parent[key], steps, next, updater, childCtx);
     };
 
     switch (step.type) {
         case "prop":
-            descend(current, step.key);
+            descend(current, step.key, { ...ctx, path: [...ctx.path, step.key] });
             break;
         case "at": {
             let resolved: number;
@@ -639,30 +654,37 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             } else {
                 resolved = step.index < 0 ? current.length + step.index : step.index;
             }
-            descend(current, resolved);
+            descend(current, resolved, { ...ctx, path: [...ctx.path, resolved] });
             break;
         }
         case "each": {
             if (step.filters?.length) {
                 const indices = matchingIndices(current, step.filters);
-                for (const i of indices) descend(current, i);
+                for (let j = 0; j < indices.length; j++) {
+                    const i = indices[j];
+                    descend(current, i, { path: [...ctx.path, i], index: j, count: indices.length });
+                }
             } else {
-                for (let i = 0; i < current.length; i++) descend(current, i);
+                for (let i = 0; i < current.length; i++) {
+                    descend(current, i, { path: [...ctx.path, i], index: i, count: current.length });
+                }
             }
             break;
         }
         case "mapGet": {
             const map = current as Map<any, any>;
-            if (atLeaf) map.set(step.key, updater(map.get(step.key)));
-            else doMutate(map.get(step.key), steps, next, updater);
+            const childCtx = { ...ctx, path: [...ctx.path, String(step.key)] };
+            if (atLeaf) map.set(step.key, updater(map.get(step.key), childCtx));
+            else doMutate(map.get(step.key), steps, next, updater, childCtx);
             break;
         }
         case "customKeyed": {
             const read = current?.[LensSubAccess]?.[step.prop];
             const write = current?.[LensSubMutate]?.[step.prop];
             if (read && write) {
-                if (atLeaf) write.call(current, step.key, updater(read.call(current, step.key)));
-                else write.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater));
+                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}(${String(step.key)})`] };
+                if (atLeaf) write.call(current, step.key, updater(read.call(current, step.key), childCtx));
+                else write.call(current, step.key, doApply(read.call(current, step.key), steps, next, updater, childCtx));
             }
             break;
         }
@@ -670,8 +692,9 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             const read = current?.[LensAccess]?.[step.prop];
             const write = current?.[LensMutate]?.[step.prop];
             if (read && write) {
-                if (atLeaf) write.call(current, updater(read.call(current)));
-                else write.call(current, doApply(read.call(current), steps, next, updater));
+                const childCtx = { ...ctx, path: [...ctx.path, `${step.prop}()`] };
+                if (atLeaf) write.call(current, updater(read.call(current), childCtx));
+                else write.call(current, doApply(read.call(current), steps, next, updater, childCtx));
             }
             break;
         }

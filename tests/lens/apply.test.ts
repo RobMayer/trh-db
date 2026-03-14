@@ -527,4 +527,151 @@ describe("Lens.apply", () => {
             expect(data.roles).toEqual(["admin", "editor", "viewer"]); // original unchanged
         });
     });
+
+    describe("updater context", () => {
+        it("provides path for simple property access", () => {
+            const data = makePerson();
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => $("address")("city"), (prev, ctx) => {
+                captured = ctx;
+                return "Seattle";
+            });
+            expect(captured!.path).toEqual(["address", "city"]);
+            expect(captured!.index).toBe(0);
+            expect(captured!.count).toBe(1);
+        });
+
+        it("provides index and count for each", () => {
+            const data = makeTeam();
+            const contexts: Lens.Context[] = [];
+            Lens.apply(data, ($) => $.each()("name"), (prev, ctx) => {
+                contexts.push(ctx);
+                return prev;
+            });
+            expect(contexts).toHaveLength(4);
+            expect(contexts[0]).toEqual({ path: [0, "name"], index: 0, count: 4 });
+            expect(contexts[3]).toEqual({ path: [3, "name"], index: 3, count: 4 });
+        });
+
+        it("provides index and count for filtered each", () => {
+            const data = makeTeam();
+            const contexts: Lens.Context[] = [];
+            Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev, ctx) => {
+                contexts.push(ctx);
+                return prev;
+            });
+            expect(contexts).toHaveLength(2);
+            expect(contexts[0]).toEqual({ path: [0, "name"], index: 0, count: 2 });
+            expect(contexts[1]).toEqual({ path: [2, "name"], index: 1, count: 2 });
+        });
+
+        it("provides path through nested each (2D) with structural sharing", () => {
+            const data = makeMatrix();
+            const paths: (string | number)[][] = [];
+            const result = Lens.apply(data, ($) => $("rows").each().each()("val"), (prev, ctx) => {
+                paths.push([...ctx.path]);
+                return prev * 10;
+            });
+            expect(paths).toEqual([
+                ["rows", 0, 0, "val"],
+                ["rows", 0, 1, "val"],
+                ["rows", 1, 0, "val"],
+                ["rows", 1, 1, "val"],
+                ["rows", 2, 0, "val"],
+                ["rows", 2, 1, "val"],
+            ]);
+            expect(result.rows[0][0].val).toBe(10);
+            expect(data.rows[0][0].val).toBe(1); // original unchanged
+        });
+
+        it("root replacement provides empty path", () => {
+            const data = { x: 1 };
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => $, (prev, ctx) => {
+                captured = ctx;
+                return { x: 2 };
+            });
+            expect(captured!.path).toEqual([]);
+            expect(captured!.index).toBe(0);
+            expect(captured!.count).toBe(1);
+        });
+
+        it("at() with negative index shows resolved positive index in path", () => {
+            const data = makePerson();
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => $("scores").at(-1), (prev, ctx) => {
+                captured = ctx;
+                return 0;
+            });
+            expect(captured!.path).toEqual(["scores", 3]); // -1 resolves to index 3
+        });
+
+        it("at() after filter provides index 0, count 1", () => {
+            const data = makeTeam();
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, ctx) => {
+                captured = ctx;
+                return "FIRST";
+            });
+            expect(captured!.index).toBe(0);
+            expect(captured!.count).toBe(1);
+        });
+
+        it("Map .get() shows stringified key in path", () => {
+            const data = makePerson();
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => $("prefs").get("fontSize"), (prev, ctx) => {
+                captured = ctx;
+                return 16;
+            });
+            expect(captured!.path).toEqual(["prefs", "fontSize"]);
+        });
+
+        it("custom named accessor shows prop() in path", () => {
+            const data = { pos: new (class {
+                #x = 3; #y = 4;
+                get x() { return this.#x; }
+                get y() { return this.#y; }
+                [LensAccess] = { x: () => this.#x, y: () => this.#y };
+                [LensApply] = { x: (v: number) => new (this.constructor as any)(v, this.#y), y: (v: number) => new (this.constructor as any)(this.#x, v) };
+            })() };
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => ($("pos") as any).x(), (prev, ctx) => {
+                captured = ctx;
+                return 10;
+            });
+            expect(captured!.path).toEqual(["pos", "x()"]);
+        });
+
+        it("custom keyed accessor shows prop(key) in path", () => {
+            const data = { store: new (class {
+                #data: Record<string, number> = { alpha: 10, beta: 20 };
+                getVal(key: string) { return this.#data[key]; }
+                [LensSubAccess] = { lookup: (key: string) => this.#data[key] };
+                [LensSubApply] = { lookup: (key: string, value: number) => { const n = new (this.constructor as any)(); n.#data = { ...this.#data, [key]: value }; return n; } };
+            })() };
+            let captured: Lens.Context | undefined;
+            Lens.apply(data, ($) => ($("store") as any).lookup("alpha"), (prev, ctx) => {
+                captured = ctx;
+                return 99;
+            });
+            expect(captured!.path).toEqual(["store", "lookup(alpha)"]);
+        });
+
+        it("sort + each provides sorted iteration with correct index and count", () => {
+            const data = makeTeam();
+            const contexts: Lens.Context[] = [];
+            Lens.apply(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, ctx) => {
+                contexts.push({ ...ctx, path: [...ctx.path] });
+                return prev;
+            });
+            expect(contexts).toHaveLength(4);
+            expect(contexts.every((c) => c.count === 4)).toBe(true);
+            // Sorted: Alice(0), Carol(2), Bob(1), Dave(3)
+            expect(contexts[0]).toEqual({ path: [0, "role"], index: 0, count: 4 });
+            expect(contexts[1]).toEqual({ path: [2, "role"], index: 1, count: 4 });
+            expect(contexts[2]).toEqual({ path: [1, "role"], index: 2, count: 4 });
+            expect(contexts[3]).toEqual({ path: [3, "role"], index: 3, count: 4 });
+        });
+    });
 });
