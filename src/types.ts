@@ -41,8 +41,6 @@ export type CollectionId = string;
 export type CollectionOf<D> = { [id: CollectionId]: CollectionMemberOf<D> };
 export type CollectionMemberOf<D> = { id: CollectionId; data: D };
 
-export type CollectionSelector<D> = any; // lens-like interface for selecting a document in a collection
-export type CollectionLens<D> = any; // lens-like interface for selecting a document or some property therein
 
 export type GraphNodeId = string;
 export type GraphLinkId = string;

@@ -1,31 +1,101 @@
-import { CollectionLens, CollectionId, Updater, CollectionSelector, ListOr, CollectionMemberOf } from "../types";
+import { CollectionId, CollectionMemberOf, ListOf, Updater } from "../types";
+import { DataLens, SelectorLens } from "../util/lens/types";
+import { LogicalOps, PredicateResult } from "../util/logic";
+import { Predicate } from "../util/predicate";
+
+// ============================================================
+// CollectionDB<D>
+// ============================================================
 
 export class CollectionDB<D> {
-    //#region CRUD Operations
-
-    select: {
-        (lens: CollectionLens<D>): unknown;
-    } = () => {};
+    // --- Direct methods (bypass pipeline) ---
+    get: {
+        (target: CollectionId): Promise<CollectionMemberOf<D> | undefined>;
+        (target: ListOf<CollectionId>): Promise<CollectionMemberOf<D>[]>;
+    } = async () => undefined as any;
     insert: {
-        (id: CollectionId, data: D): unknown; //insert one
-        (payload: { [id: CollectionId]: D }): unknown; //insert many
-    } = () => {};
-    update: {
-        (target: CollectionLens<D>, payload: Updater<unknown, CollectionMemberOf<D>>): unknown;
-        (target: CollectionSelector<D>, payload: Updater<D, CollectionMemberOf<D>>): unknown; // this might be superfluous given the above overload
-        (target: ListOr<CollectionId>, payload: Updater<D, CollectionMemberOf<D>>): unknown;
-        (payload: { [id: CollectionId]: Updater<D, CollectionMemberOf<D>> }): unknown;
-    } = () => {};
+        (id: CollectionId, data: D): Promise<CollectionMemberOf<D>>;
+        (payload: { [id: CollectionId]: D }): Promise<CollectionMemberOf<D>[]>;
+    } = async () => undefined as any;
     remove: {
-        (nodes: CollectionSelector<D> | ListOr<CollectionId>): unknown;
-    } = () => {};
+        (target: CollectionId): Promise<CollectionMemberOf<D> | undefined>;
+        (target: ListOf<CollectionId>): Promise<CollectionMemberOf<D>[]>;
+    } = async () => undefined as any;
 
-    //#endregion
+    // --- Chain starters → pipeline ---
+    where: {
+        <T>(lens: ($: SelectorLens<D> & CollectionMeta & LogicalOps) => Predicate<T> | PredicateResult): CollectionPipeline<D, "multi">;
+    } = (() => {}) as any;
+    select: {
+        (target: CollectionId): CollectionPipeline<D, "single">;
+        (target: ListOf<CollectionId>): CollectionPipeline<D, "multi">;
+    } = () => ({}) as any;
+    all: {
+        (): CollectionPipeline<D, "multi">;
+    } = () => ({}) as any;
 
-    //#region Meta Operations
+    addIndex: {
+        // index options as second arg?
+        <T>(lens: ($: SimpleLens<D>) => SimpleLens<T>): void;
+    } = () => ({}) as any;
 
-    addIndex = () => {};
-    removeIndex = () => {};
+    dropIndex: {
+        <T>(lens: ($: SimpleLens<D>) => SimpleLens<T>): void;
+    } = () => ({}) as any;
+}
 
-    //#endregion
+// ============================================================
+// CollectionMeta
+// ============================================================
+
+export type CollectionMeta = {
+    ID: SelectorLens<string>;
+};
+
+// ============================================================
+// Pipeline Interface
+// ============================================================
+
+type Item<D> = CollectionMemberOf<D>;
+type Cardinality = "single" | "multi";
+type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | undefined : Item<D>[];
+
+// ============================================================
+// Terminals
+// ============================================================
+
+interface CollectionTerminals<D, C extends Cardinality> {
+    // --- Read terminals ---
+    get(): Promise<TerminalResult<D, C>>;
+    count(): Promise<number>;
+    exists(): Promise<boolean>;
+    id(): Promise<C extends "multi" ? string[] : string | undefined>;
+
+    // --- Write terminals (whole-data) ---
+    update(updater: Updater<D, Item<D>>): Promise<TerminalResult<D, C>>;
+    remove(): Promise<TerminalResult<D, C>>;
+
+    // --- Write terminals (lens-targeted) ---
+    update<R>(lens: ($: DataLens<D>) => DataLens<R, any, any>, updater: Updater<R, Item<D>>): Promise<TerminalResult<D, C>>;
+}
+
+// ============================================================
+// The Pipeline
+// ============================================================
+
+export interface CollectionPipeline<D, C extends Cardinality> extends CollectionTerminals<D, C> {
+    // Filtering
+    where<T>(lens: ($: SelectorLens<D> & CollectionMeta & LogicalOps) => Predicate<T> | PredicateResult): CollectionPipeline<D, C>;
+
+    // Cardinality reducers (multi → single)
+    first(): CollectionPipeline<D, "single">;
+    last(): CollectionPipeline<D, "single">;
+    at(index: number): CollectionPipeline<D, "single">;
+
+    // Presentation (preserves cardinality)
+    sort<T>(lens: ($: SelectorLens<D> & CollectionMeta) => SelectorLens<T>, dir: "asc" | "desc"): CollectionPipeline<D, C>;
+    distinct(): CollectionPipeline<D, C>;
+    slice(start: number, end?: number): CollectionPipeline<D, C>;
+    paginate(page: number, count: number): CollectionPipeline<D, C>;
+    window(skip: number, take: number): CollectionPipeline<D, C>; // variation that can use slice under the hood. Give me up-to-Y-items starting at X
 }
