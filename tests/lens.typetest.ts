@@ -1,9 +1,9 @@
 import { LensNavigable, LensNav } from "../src/types";
 import { DataLens, SelectorLens, MutatorLensOf, ApplierLensOf } from "../src/util/lens/types";
 
-// ============================================================
+// ------------------------------------------------------------
 // Test Data Shapes
-// ============================================================
+// ------------------------------------------------------------
 
 type TestData = {
     name: string;
@@ -16,9 +16,9 @@ type TestData = {
 
 declare const $: SelectorLens<TestData>;
 
-// ============================================================
+// ------------------------------------------------------------
 // Property Access
-// ============================================================
+// ------------------------------------------------------------
 
 // Top-level
 const l_name: SelectorLens<string> = $("name");
@@ -31,9 +31,9 @@ const l_logins: SelectorLens<number> = $("logins");
 const l_deep: SelectorLens<number> = $("nested")("deep");
 const l_tags: SelectorLens<string[]> = $("nested")("tags");
 
-// ============================================================
+// ------------------------------------------------------------
 // Utility Methods
-// ============================================================
+// ------------------------------------------------------------
 
 // .size() — arrays, strings
 const l_roles_size: SelectorLens<number> = $("roles").size();
@@ -55,9 +55,9 @@ const l_nested_values: SelectorLens<(number | string[])[]> = $("nested").values(
 // .entries() — objects
 const l_nested_entries: SelectorLens<[string, number | string[]][]> = $("nested").entries();
 
-// ============================================================
+// ------------------------------------------------------------
 // Discriminated Union Support
-// ============================================================
+// ------------------------------------------------------------
 
 type UnionData = { type: "person"; age: number; name: string } | { type: "book"; title: string; pages: number };
 
@@ -82,9 +82,9 @@ const nu_meta: SelectorLens<{ score: number } | { label: string }> = nu$("meta")
 const nu_score: SelectorLens<number | undefined> = nu$("meta")("score");
 const nu_label: SelectorLens<string | undefined> = nu$("meta")("label");
 
-// ============================================================
+// ------------------------------------------------------------
 // Optional Field Support
-// ============================================================
+// ------------------------------------------------------------
 
 class Example implements LensNavigable {
     [LensNav] = {
@@ -131,9 +131,9 @@ const o_tags_size: SelectorLens<number> = o$("tags").size();
 
 const o_weird = o$("someExample").has("test");
 
-// ============================================================
+// ------------------------------------------------------------
 // .each() — Array Element Mapping
-// ============================================================
+// ------------------------------------------------------------
 
 type Address = { type: string; location: string; zip: string };
 type EachData = {
@@ -178,9 +178,9 @@ const e_addrtype_ary: DataLens<never, string[], string> = e$("addresses")
     .transform((m) => m.type);
 const e_addrtype_num: DataLens<never, number> = e$("name").transform((item) => Number(item));
 
-// ============================================================
+// ------------------------------------------------------------
 // Target = never enforcement — read-only ops can't be mutation terminals
-// ============================================================
+// ------------------------------------------------------------
 
 // Enforcement works through function inference: when the lens callback returns
 // a DataLens with Target = never, R infers as never, making the value parameter
@@ -264,9 +264,9 @@ testMutate(
     "new",
 );
 
-// ============================================================
+// ------------------------------------------------------------
 // each(callback) — type-level tests
-// ============================================================
+// ------------------------------------------------------------
 
 // Eval is array of per-element results
 const ec_names: DataLens<string, string[], string> = e$("addresses").each((el) => el("type"));
@@ -286,9 +286,9 @@ testMutate(eachTestData, ($) => $("addresses").each((el) => el("type").size()), 
 // each(callback) apply with mutable path
 testApply(eachTestData, ($) => $("addresses").each((el) => el("type")), "new");
 
-// ============================================================
+// ------------------------------------------------------------
 // Custom accessor (LensNav) — type-level tests
-// ============================================================
+// ------------------------------------------------------------
 
 // Navigable accessor (has mutate) — valid mutation terminal
 testMutate(optTestData, ($) => $("someExample").link("test"), "new");
@@ -323,9 +323,9 @@ testMutate(maData, ($) => $("m").cell(0, 1), 99);
 // @ts-expect-error — computed has no mutate/apply
 testMutate(maData, ($) => $("m").computed(0, 1), "x");
 
-// ============================================================
+// ------------------------------------------------------------
 // Dynamic Lens References — type-level tests
-// ============================================================
+// ------------------------------------------------------------
 
 type DynData = {
     idx: number;
@@ -386,9 +386,9 @@ const d_ma_cell_lens: SelectorLens<number> = ma$("m").cell(d$("idx"), d$("idx"))
 testMutate(optTestData, ($) => $("someExample").link($("name")), "new");
 testMutate(maData, ($) => $("m").cell(d$("idx"), d$("idx")), 99);
 
-// ============================================================
+// ------------------------------------------------------------
 // SimpleLens — Property-Only Navigation
-// ============================================================
+// ------------------------------------------------------------
 
 import { PathLens } from "../src/util/lens/types";
 

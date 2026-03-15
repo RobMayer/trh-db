@@ -1,13 +1,24 @@
-import { CollectionId, CollectionMemberOf, ListOf, Updater } from "../types";
+import { Codec, CollectionId, CollectionMemberOf, CollectionOf, LensPathSegment, ListOf, Updater } from "../types";
+import { IndexStore } from "../util/indices";
 import { DataLens, SelectorLens, PathLens } from "../util/lens/types";
 import { LogicalOps, PredicateResult } from "../util/logic";
 import { Predicate } from "../util/predicate";
 
-// ============================================================
+// ------------------------------------------------------------
 // CollectionDB<D>
-// ============================================================
+// ------------------------------------------------------------
 
 export class CollectionDB<D> {
+    #data: CollectionOf<D>;
+    #codec: Codec<CollectionMemberOf<D>, CollectionOf<D>>;
+    #indices: IndexStore;
+
+    constructor(codec: Codec<CollectionMemberOf<D>, CollectionOf<D>>) {
+        this.#data = {};
+        this.#indices = new IndexStore();
+        this.#codec = codec;
+    }
+
     // --- Direct methods (bypass pipeline) ---
     get: {
         (target: CollectionId): Promise<CollectionMemberOf<D> | undefined>;
@@ -44,25 +55,25 @@ export class CollectionDB<D> {
     } = () => ({}) as any;
 }
 
-// ============================================================
+// ------------------------------------------------------------
 // CollectionMeta
-// ============================================================
+// ------------------------------------------------------------
 
 export type CollectionMeta = {
     ID: SelectorLens<string>;
 };
 
-// ============================================================
+// ------------------------------------------------------------
 // Pipeline Interface
-// ============================================================
+// ------------------------------------------------------------
 
 type Item<D> = CollectionMemberOf<D>;
 type Cardinality = "single" | "multi";
 type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | undefined : Item<D>[];
 
-// ============================================================
+// ------------------------------------------------------------
 // Terminals
-// ============================================================
+// ------------------------------------------------------------
 
 interface CollectionTerminals<D, C extends Cardinality> {
     // --- Read terminals ---
@@ -79,9 +90,9 @@ interface CollectionTerminals<D, C extends Cardinality> {
     update<R>(lens: ($: DataLens<D>) => DataLens<R, any, any>, updater: Updater<R, Item<D>>): Promise<TerminalResult<D, C>>;
 }
 
-// ============================================================
+// ------------------------------------------------------------
 // The Pipeline
-// ============================================================
+// ------------------------------------------------------------
 
 export interface CollectionPipeline<D, C extends Cardinality> extends CollectionTerminals<D, C> {
     // Filtering

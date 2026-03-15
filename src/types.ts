@@ -1,6 +1,9 @@
-export type Codec = {
-    serialize: (value: unknown) => unknown;
-    parse: (token: unknown) => unknown;
+export type Codec<I, D> = {
+    update: (items: I[], data: D) => Promise<void>;
+    insert: (items: I[], data: D) => Promise<void>;
+    delete: (items: I[], data: D) => Promise<void>;
+    load: () => Promise<D>;
+    flush: (data: D) => Promise<void>;
 };
 
 // --- Union-safe key distribution ---
@@ -28,7 +31,7 @@ export type DeepReadonly<T> = T extends Primitive
             ? ReadonlySet<DeepReadonly<U>>
             : { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
-export type LensPathSegment = { type: "property"; key: string } | { type: "index"; index: number } | { type: "accessor"; name: string; args?: string[] };
+export type LensPathSegment = { type: "property"; key: string } | { type: "index"; index: number } | { type: "accessor"; name: string; args?: unknown[] };
 
 export type TreeId = string;
 export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
@@ -40,7 +43,6 @@ export type TreeLens<D> = any; // lens-like interface for selecting members or p
 export type CollectionId = string;
 export type CollectionOf<D> = { [id: CollectionId]: CollectionMemberOf<D> };
 export type CollectionMemberOf<D> = { id: CollectionId; data: D };
-
 
 export type GraphNodeId = string;
 export type GraphLinkId = string;

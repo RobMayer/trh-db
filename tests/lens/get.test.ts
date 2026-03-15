@@ -102,7 +102,10 @@ describe("Lens.get", () => {
         });
 
         it("returns object entries", () => {
-            expect(Lens.get(person, ($) => $("address").entries())).toEqual([["city", "Portland"], ["zip", "97201"]]);
+            expect(Lens.get(person, ($) => $("address").entries())).toEqual([
+                ["city", "Portland"],
+                ["zip", "97201"],
+            ]);
         });
     });
 
@@ -131,7 +134,10 @@ describe("Lens.get", () => {
         });
 
         it("returns Map entries", () => {
-            expect(Lens.get(person, ($) => $("prefs").entries())).toEqual([["theme", 1], ["fontSize", 14]]);
+            expect(Lens.get(person, ($) => $("prefs").entries())).toEqual([
+                ["theme", 1],
+                ["fontSize", 14],
+            ]);
         });
     });
 
@@ -172,11 +178,7 @@ describe("Lens.get", () => {
 
         it("flattens with each() through property into nested array", () => {
             const data = {
-                groups: [
-                    { items: ["a", "b", "c"] },
-                    { items: ["d", "e"] },
-                    { items: ["f", "g", "h", "i"] },
-                ],
+                groups: [{ items: ["a", "b", "c"] }, { items: ["d", "e"] }, { items: ["f", "g", "h", "i"] }],
             };
             expect(Lens.get(data, ($) => $("groups").each()("items").each())).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
         });
@@ -184,8 +186,14 @@ describe("Lens.get", () => {
         it("flattens with triple-nested each", () => {
             const cube = {
                 layers: [
-                    [[1, 2], [3, 4]],
-                    [[5, 6], [7, 8]],
+                    [
+                        [1, 2],
+                        [3, 4],
+                    ],
+                    [
+                        [5, 6],
+                        [7, 8],
+                    ],
                 ],
             };
             expect(Lens.get(cube, ($) => $("layers").each().each().each())).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
@@ -711,9 +719,9 @@ describe("Lens.get", () => {
         });
     });
 
-    // ================================================================
+    // ------------------------------------------------------------====
     // each(callback) — per-element navigation
-    // ================================================================
+    // ------------------------------------------------------------====
 
     describe("each(callback)", () => {
         const items = [
@@ -739,10 +747,7 @@ describe("Lens.get", () => {
         });
 
         it("chaining after each(callback)", () => {
-            const data = [
-                { ref: { name: "Alice", age: 30 } },
-                { ref: { name: "Bob", age: 25 } },
-            ];
+            const data = [{ ref: { name: "Alice", age: 30 } }, { ref: { name: "Bob", age: 25 } }];
             const result = Lens.get(data, ($) => $.each((el) => el("ref"))("name"));
             expect(result).toEqual(["Alice", "Bob"]);
         });
@@ -759,9 +764,9 @@ describe("Lens.get", () => {
         });
     });
 
-    // ================================================================
+    // ------------------------------------------------------------====
     // Dynamic lens references — lens args in $(n), get, has, slice
-    // ================================================================
+    // ------------------------------------------------------------====
 
     describe("dynamic lens references", () => {
         it("$(n) with lens arg — index from sibling field", () => {
@@ -783,7 +788,13 @@ describe("Lens.get", () => {
         });
 
         it("Map.get() with lens arg", () => {
-            const data = { key: "fontSize", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            const data = {
+                key: "fontSize",
+                prefs: new Map([
+                    ["theme", 1],
+                    ["fontSize", 14],
+                ]),
+            };
             const result = Lens.get(data, ($) => $("prefs").get($("key")));
             expect(result).toBe(14);
         });
@@ -801,7 +812,13 @@ describe("Lens.get", () => {
         });
 
         it("Map.has() with lens arg", () => {
-            const data = { key: "theme", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            const data = {
+                key: "theme",
+                prefs: new Map([
+                    ["theme", 1],
+                    ["fontSize", 14],
+                ]),
+            };
             const result = Lens.get(data, ($) => $("prefs").has($("key")));
             expect(result).toBe(true);
         });
@@ -870,7 +887,12 @@ describe("Lens.get", () => {
                     cell: { select: (row: number, col: number) => this.#data[row][col] },
                 };
             }
-            const data = { m: new Matrix([[1, 2], [3, 4]]) };
+            const data = {
+                m: new Matrix([
+                    [1, 2],
+                    [3, 4],
+                ]),
+            };
             expect(Lens.get(data, ($) => ($("m") as any).cell(0, 1))).toBe(2);
             expect(Lens.get(data, ($) => ($("m") as any).cell(1, 0))).toBe(3);
         });
@@ -885,7 +907,14 @@ describe("Lens.get", () => {
                     cell: { select: (row: number, col: number) => this.#data[row][col] },
                 };
             }
-            const data = { row: 1, col: 0, m: new Matrix([[1, 2], [3, 4]]) };
+            const data = {
+                row: 1,
+                col: 0,
+                m: new Matrix([
+                    [1, 2],
+                    [3, 4],
+                ]),
+            };
             const result = Lens.get(data, ($) => ($("m") as any).cell($("row"), $("col")));
             expect(result).toBe(3);
         });
@@ -953,9 +982,9 @@ describe("Lens.get", () => {
         });
     });
 
-    // ================================================================
+    // ------------------------------------------------------------====
     // Nested each() with callbacks
-    // ================================================================
+    // ------------------------------------------------------------====
 
     describe("nested each() with callbacks", () => {
         // Test data: each row has items (inner array) and a pointer
@@ -980,20 +1009,14 @@ describe("Lens.get", () => {
         // proxy's value is [["a","b","c"], ["d","e"], ["f","g","h","i"]] with isEach=true
         // The inner each(callback) should iterate elements of each sub-array
         it("outer each() + inner each(callback): per-element transform in nested arrays", () => {
-            const result = Lens.get(grid, ($) =>
-                $.each()("items").each((item) => item.size())
-            );
+            const result = Lens.get(grid, ($) => $.each()("items").each((item) => item.size()));
             expect(result).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1]);
         });
 
         // Pattern 3: both each() calls use callbacks
         // Outer callback gets each row, navigates to items, inner callback transforms each item
         it("both each() with callbacks: nested callback transform", () => {
-            const result = Lens.get(grid, ($) =>
-                $.each((row) =>
-                    row("items").each((item) => item.size())
-                )
-            );
+            const result = Lens.get(grid, ($) => $.each((row) => row("items").each((item) => item.size())));
             expect(result).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1]);
         });
 
@@ -1006,11 +1029,7 @@ describe("Lens.get", () => {
                 { vals: [40, 50], pick: 0 },
                 { vals: [60, 70, 80, 90], pick: 3 },
             ];
-            const result = Lens.get(data, ($) =>
-                $.each((row) =>
-                    row("vals").each((item) => item)
-                )
-            );
+            const result = Lens.get(data, ($) => $.each((row) => row("vals").each((item) => item)));
             // First: just verify nested each(callback) works with identity
             expect(result).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90]);
         });
@@ -1025,9 +1044,7 @@ describe("Lens.get", () => {
                 { vals: [40, 50], pick: 0 },
                 { vals: [60, 70, 80, 90], pick: 3 },
             ];
-            const result = Lens.get(data, ($) =>
-                $.each((row) => row("vals").at(row("pick")))
-            );
+            const result = Lens.get(data, ($) => $.each((row) => row("vals").at(row("pick"))));
             expect(result).toEqual([20, 40, 90]);
         });
 
@@ -1036,14 +1053,22 @@ describe("Lens.get", () => {
         it("inner each(callback) using outer element lens for at()", () => {
             // Each group has a matrix of numbers and an index to pick from each row
             const data = [
-                { matrix: [[1, 2, 3], [4, 5, 6]], colPick: 0 },
-                { matrix: [[7, 8], [9, 10]], colPick: 1 },
+                {
+                    matrix: [
+                        [1, 2, 3],
+                        [4, 5, 6],
+                    ],
+                    colPick: 0,
+                },
+                {
+                    matrix: [
+                        [7, 8],
+                        [9, 10],
+                    ],
+                    colPick: 1,
+                },
             ];
-            const result = Lens.get(data, ($) =>
-                $.each((group) =>
-                    group("matrix").each((row) => row.at(group("colPick")))
-                )
-            );
+            const result = Lens.get(data, ($) => $.each((group) => group("matrix").each((row) => row.at(group("colPick")))));
             // group 0: colPick=0, matrix rows [1,2,3] and [4,5,6] → picks index 0 → [1, 4]
             // group 1: colPick=1, matrix rows [7,8] and [9,10] → picks index 1 → [8, 10]
             // Flattened: [1, 4, 8, 10]
@@ -1052,14 +1077,8 @@ describe("Lens.get", () => {
 
         // Pattern 6: outer each(callback), inner each(), chaining after
         it("outer each(callback) + inner each() + chaining", () => {
-            const data = [
-                { tags: ["hello", "world"] },
-                { tags: ["foo"] },
-                { tags: ["ab", "cde", "fghi"] },
-            ];
-            const result = Lens.get(data, ($) =>
-                $.each((row) => row("tags").each()).size()
-            );
+            const data = [{ tags: ["hello", "world"] }, { tags: ["foo"] }, { tags: ["ab", "cde", "fghi"] }];
+            const result = Lens.get(data, ($) => $.each((row) => row("tags").each()).size());
             // each(callback) returns the tags flattened: ["hello", "world", "foo", "ab", "cde", "fghi"]
             // Then .size() on each string in the flattened array
             expect(result).toEqual([5, 5, 3, 2, 3, 4]);

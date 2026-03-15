@@ -1,14 +1,11 @@
 import { Codec } from "../types";
 
-type Jsonable = string | number | boolean | null | Jsonable[] | { [key: string]: Jsonable };
-
-// todo
-export class JsonCodec<I extends Jsonable, D extends Jsonable> implements Codec<I, D> {
+export class MemoryCodec<I, D> implements Codec<I, D> {
     update: (items: I[], data: D) => Promise<void> = async () => {};
     insert: (items: I[], data: D) => Promise<void> = async () => {};
     delete: (items: I[], data: D) => Promise<void> = async () => {};
     load: () => Promise<D> = async () => {
-        return {} as any;
+        return {} as D;
     };
     flush: (data: D) => Promise<void> = async () => {};
 }

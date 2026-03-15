@@ -53,12 +53,6 @@ type LensState = { value: unknown; isEach: boolean; path: PathStep[]; filters: F
 
 //#region - Shared helpers
 
-/** If arg is a LENS proxy, extract its value. Otherwise return as-is. */
-const unwrap = (arg: unknown): unknown => {
-    const lens = typeof arg === "function" ? (arg as any)[LENS] : undefined;
-    return lens ? lens.value : arg;
-};
-
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function compare(a: unknown, b: unknown): number | null {
@@ -148,7 +142,7 @@ function convertToString(value: unknown): string | null {
     return null;
 }
 
-function sortCompare(a: unknown, b: unknown): number {
+export function sortCompare(a: unknown, b: unknown): number {
     // 1. Compare symbol / native types
     const cmp = compare(a, b);
     if (cmp !== null) return cmp;
@@ -161,6 +155,12 @@ function sortCompare(a: unknown, b: unknown): number {
     // 3. String fallback
     return collator.compare(String(a), String(b));
 }
+
+/** If arg is a LENS proxy, extract its value. Otherwise return as-is. */
+const unwrap = (arg: unknown): unknown => {
+    const lens = typeof arg === "function" ? (arg as any)[LENS] : undefined;
+    return lens ? lens.value : arg;
+};
 
 //#endregion
 

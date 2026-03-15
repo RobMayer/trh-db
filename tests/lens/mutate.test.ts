@@ -51,7 +51,11 @@ describe("Lens.mutate", () => {
 
         it("sets a top-level property with an updater", () => {
             const data = makePerson();
-            Lens.mutate(data, ($) => $("age"), (prev) => prev + 1);
+            Lens.mutate(
+                data,
+                ($) => $("age"),
+                (prev) => prev + 1,
+            );
             expect(data.age).toBe(31);
         });
 
@@ -88,19 +92,31 @@ describe("Lens.mutate", () => {
     describe("each", () => {
         it("mutates all array elements", () => {
             const data = makePerson();
-            Lens.mutate(data, ($) => $("scores").each(), (prev) => prev * 2);
+            Lens.mutate(
+                data,
+                ($) => $("scores").each(),
+                (prev) => prev * 2,
+            );
             expect(data.scores).toEqual([190, 164, 142, 176]);
         });
 
         it("mutates a property on each element", () => {
             const data = makeTeam();
-            Lens.mutate(data, ($) => $.each()("age"), (prev) => prev + 1);
+            Lens.mutate(
+                data,
+                ($) => $.each()("age"),
+                (prev) => prev + 1,
+            );
             expect(data.map((d) => d.age)).toEqual([26, 36, 29, 41]);
         });
 
         it("handles nested each (2D array)", () => {
             const data = makeMatrix();
-            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev) => prev * 10);
+            Lens.mutate(
+                data,
+                ($) => $("rows").each().each()("val"),
+                (prev) => prev * 10,
+            );
             expect(data.rows[0][0].val).toBe(10);
             expect(data.rows[1][1].val).toBe(40);
             expect(data.rows[2][1].val).toBe(60);
@@ -110,7 +126,11 @@ describe("Lens.mutate", () => {
     describe("where", () => {
         it("mutates only matching elements", () => {
             const data = makeTeam();
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("age"), (prev) => prev + 10);
+            Lens.mutate(
+                data,
+                ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("age"),
+                (prev) => prev + 10,
+            );
             expect(data[0].age).toBe(35); // Alice: dev → mutated
             expect(data[1].age).toBe(35); // Bob: lead → unchanged
             expect(data[2].age).toBe(38); // Carol: dev → mutated
@@ -129,7 +149,14 @@ describe("Lens.mutate", () => {
     describe("filter", () => {
         it("mutates only elements passing the filter", () => {
             const data = makePerson();
-            Lens.mutate(data, ($) => $("scores").filter((s) => s < 85).each(), (prev) => prev + 10);
+            Lens.mutate(
+                data,
+                ($) =>
+                    $("scores")
+                        .filter((s) => s < 85)
+                        .each(),
+                (prev) => prev + 10,
+            );
             expect(data.scores).toEqual([95, 92, 81, 88]); // 82→92, 71→81
         });
     });
@@ -137,13 +164,21 @@ describe("Lens.mutate", () => {
     describe("slice", () => {
         it("mutates elements within the slice range", () => {
             const data = makePerson();
-            Lens.mutate(data, ($) => $("scores").slice(1, 3).each(), (prev) => 0);
+            Lens.mutate(
+                data,
+                ($) => $("scores").slice(1, 3).each(),
+                (prev) => 0,
+            );
             expect(data.scores).toEqual([95, 0, 0, 88]);
         });
 
         it("mutates with negative slice indices", () => {
             const data = makePerson();
-            Lens.mutate(data, ($) => $("scores").slice(-2).each(), (prev) => prev + 100);
+            Lens.mutate(
+                data,
+                ($) => $("scores").slice(-2).each(),
+                (prev) => prev + 100,
+            );
             expect(data.scores).toEqual([95, 82, 171, 188]);
         });
     });
@@ -151,7 +186,11 @@ describe("Lens.mutate", () => {
     describe("Map", () => {
         it("mutates a Map value", () => {
             const data = makePerson();
-            Lens.mutate(data, ($) => $("prefs").get("fontSize"), (prev) => prev + 2);
+            Lens.mutate(
+                data,
+                ($) => $("prefs").get("fontSize"),
+                (prev) => prev + 2,
+            );
             expect(data.prefs.get("fontSize")).toBe(16);
             expect(data.prefs.get("theme")).toBe(1); // unchanged
         });
@@ -167,7 +206,7 @@ describe("Lens.mutate", () => {
                     $.where(($s) => [$s("role"), "=", "dev"])
                         .filter((p: any) => p.age > 26)
                         .each()("name"),
-                (prev) => prev.toUpperCase()
+                (prev) => prev.toUpperCase(),
             );
             expect(data[0].name).toBe("Alice"); // dev but age 25, filtered out
             expect(data[1].name).toBe("Bob"); // not dev
@@ -184,7 +223,7 @@ describe("Lens.mutate", () => {
                     $.where(($s) => [$s("age"), "<", 40])
                         .slice(0, 2)
                         .each()("role"),
-                "intern"
+                "intern",
             );
             expect(data[0].role).toBe("intern"); // Alice: age < 40, in slice
             expect(data[1].role).toBe("intern"); // Bob: age < 40, in slice
@@ -202,7 +241,7 @@ describe("Lens.mutate", () => {
                         .filter((s) => s < 90)
                         .slice(1)
                         .each(),
-                0
+                0,
             );
             expect(data.scores).toEqual([95, 82, 0, 0]); // 71→0, 88→0
         });
@@ -217,7 +256,7 @@ describe("Lens.mutate", () => {
                         .slice(1, 3)
                         .filter((s) => s > 75)
                         .each(),
-                0
+                0,
             );
             expect(data.scores).toEqual([95, 0, 71, 88]); // only 82→0
         });
@@ -231,7 +270,7 @@ describe("Lens.mutate", () => {
                     $.where(($s) => [$s("age"), ">", 25])
                         .where(($s) => [$s("age"), "<", 35])
                         .each()("name"),
-                "MATCH"
+                "MATCH",
             );
             expect(data[0].name).toBe("Alice"); // age 25, not > 25
             expect(data[1].name).toBe("Bob"); // age 35, not < 35
@@ -262,7 +301,14 @@ describe("Lens.mutate", () => {
         it("filter + at(1) targets second matching element", () => {
             const data = makePerson();
             // filter: < 90 → indices [1,2,3] (82,71,88); at(1) → index 2 (71)
-            Lens.mutate(data, ($) => $("scores").filter((s) => s < 90).at(1), 999);
+            Lens.mutate(
+                data,
+                ($) =>
+                    $("scores")
+                        .filter((s) => s < 90)
+                        .at(1),
+                999,
+            );
             expect(data.scores).toEqual([95, 82, 999, 88]);
         });
 
@@ -282,7 +328,7 @@ describe("Lens.mutate", () => {
                     $.where(($s) => [$s("age"), ">", 25])
                         .filter((p: any) => p.age < 40)
                         .at(0)("role"),
-                "picked"
+                "picked",
             );
             expect(data[0].role).toBe("dev"); // Alice: age 25, excluded by where
             expect(data[1].role).toBe("picked"); // Bob: matches both, first match
@@ -326,7 +372,11 @@ describe("Lens.mutate", () => {
             const data = makeTeam();
             let rank = 0;
             // sort by age asc, then assign rank to each
-            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), () => `rank-${rank++}`);
+            Lens.mutate(
+                data,
+                ($) => $.sort(($s) => $s("age"), "asc").each()("role"),
+                () => `rank-${rank++}`,
+            );
             // sorted order: Alice(25)→rank-0, Carol(28)→rank-1, Bob(35)→rank-2, Dave(40)→rank-3
             expect(data[0].role).toBe("rank-0"); // Alice
             expect(data[1].role).toBe("rank-2"); // Bob
@@ -337,7 +387,14 @@ describe("Lens.mutate", () => {
         it("sort with comparator + at(0)", () => {
             const data = makePerson();
             // sort scores descending via comparator: [95, 88, 82, 71]; at(0) → 95 (index 0)
-            Lens.mutate(data, ($) => $("scores").sort((a, b) => b - a).at(0), 999);
+            Lens.mutate(
+                data,
+                ($) =>
+                    $("scores")
+                        .sort((a, b) => b - a)
+                        .at(0),
+                999,
+            );
             expect(data.scores).toEqual([999, 82, 71, 88]); // index 0 had the highest (95)
         });
 
@@ -351,7 +408,7 @@ describe("Lens.mutate", () => {
                     $.where(($s) => [$s("role"), "!=", "manager"])
                         .sort(($s) => $s("age"), "desc")
                         .at(0)("name"),
-                "OLDEST_NON_MGR"
+                "OLDEST_NON_MGR",
             );
             expect(data[0].name).toBe("Alice");
             expect(data[1].name).toBe("OLDEST_NON_MGR"); // Bob: oldest non-manager
@@ -374,7 +431,15 @@ describe("Lens.mutate", () => {
                     ],
                 ],
             };
-            Lens.mutate(data, ($) => $("groups").each().where(($s) => [$s("active"), "=", true]).each()("name"), (prev) => prev.toUpperCase());
+            Lens.mutate(
+                data,
+                ($) =>
+                    $("groups")
+                        .each()
+                        .where(($s) => [$s("active"), "=", true])
+                        .each()("name"),
+                (prev) => prev.toUpperCase(),
+            );
             expect(data.groups[0][0].name).toBe("A"); // active → mutated
             expect(data.groups[0][1].name).toBe("b"); // inactive → unchanged
             expect(data.groups[1][0].name).toBe("C"); // active → mutated
@@ -383,7 +448,11 @@ describe("Lens.mutate", () => {
 
         it("where + nested property", () => {
             const data = makeTeam();
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev) => `[${prev}]`);
+            Lens.mutate(
+                data,
+                ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"),
+                (prev) => `[${prev}]`,
+            );
             expect(data[0].name).toBe("[Alice]");
             expect(data[1].name).toBe("Bob"); // unchanged
             expect(data[2].name).toBe("[Carol]");
@@ -417,7 +486,14 @@ describe("Lens.mutate", () => {
 
         it("filter on empty array is a no-op", () => {
             const data = { items: [] as number[] };
-            Lens.mutate(data, ($) => $("items").filter((x) => x > 0).each(), 999);
+            Lens.mutate(
+                data,
+                ($) =>
+                    $("items")
+                        .filter((x) => x > 0)
+                        .each(),
+                999,
+            );
             expect(data.items).toEqual([]);
         });
 
@@ -436,7 +512,7 @@ describe("Lens.mutate", () => {
                     $.sort(($s) => $s("age"), "desc")
                         .slice(0, 2)
                         .each()("role"),
-                "top2"
+                "top2",
             );
             expect(data[0].role).toBe("dev"); // Alice: 4th in sorted order
             expect(data[1].role).toBe("top2"); // Bob: 2nd oldest
@@ -459,7 +535,15 @@ describe("Lens.mutate", () => {
                 ],
             };
             // In each sub-array, sort by score desc, pick at(0) → highest scorer per group
-            Lens.mutate(data, ($) => $("groups").each().sort(($s) => $s("score"), "desc").at(0)("name"), "BEST");
+            Lens.mutate(
+                data,
+                ($) =>
+                    $("groups")
+                        .each()
+                        .sort(($s) => $s("score"), "desc")
+                        .at(0)("name"),
+                "BEST",
+            );
             expect(data.groups[0][0].name).toBe("a"); // score 10, not highest
             expect(data.groups[0][1].name).toBe("BEST"); // score 30, highest in group 0
             expect(data.groups[0][2].name).toBe("c"); // score 20
@@ -479,7 +563,11 @@ describe("Lens.mutate", () => {
                 { name: "b", active: false },
                 { name: "c", active: true },
             ];
-            Lens.mutate(data, ($) => $.where(($s) => [$s("active"), "=", true]).each()("name"), (prev) => prev.toUpperCase());
+            Lens.mutate(
+                data,
+                ($) => $.where(($s) => [$s("active"), "=", true]).each()("name"),
+                (prev) => prev.toUpperCase(),
+            );
             expect(data[0].name).toBe("A");
             expect(data[1].name).toBe("b"); // inactive, unchanged
             expect(data[2].name).toBe("C");
@@ -501,8 +589,18 @@ describe("Lens.mutate", () => {
                 return this.#y;
             }
             [LensNav] = {
-                x: { select: () => this.#x, mutate: (value: number) => { this.#x = value; } },
-                y: { select: () => this.#y, mutate: (value: number) => { this.#y = value; } },
+                x: {
+                    select: () => this.#x,
+                    mutate: (value: number) => {
+                        this.#x = value;
+                    },
+                },
+                y: {
+                    select: () => this.#y,
+                    mutate: (value: number) => {
+                        this.#y = value;
+                    },
+                },
             };
         }
 
@@ -515,7 +613,11 @@ describe("Lens.mutate", () => {
 
         it("mutates via custom named accessor with updater", () => {
             const data = { pos: new Vector2(3, 4) };
-            Lens.mutate(data, ($) => ($("pos") as any).y(), (prev: number) => prev * 2);
+            Lens.mutate(
+                data,
+                ($) => ($("pos") as any).y(),
+                (prev: number) => prev * 2,
+            );
             expect(data.pos.y).toBe(8);
         });
 
@@ -528,7 +630,12 @@ describe("Lens.mutate", () => {
                 return this.#data[key];
             }
             [LensNav] = {
-                lookup: { select: (key: string) => this.#data[key], mutate: (value: number, key: string) => { this.#data[key] = value; } },
+                lookup: {
+                    select: (key: string) => this.#data[key],
+                    mutate: (value: number, key: string) => {
+                        this.#data[key] = value;
+                    },
+                },
             };
         }
 
@@ -552,11 +659,18 @@ describe("Lens.mutate", () => {
                 [LensNav] = {
                     cell: {
                         select: (row: number, col: number) => this.#data[row][col],
-                        mutate: (value: number, row: number, col: number) => { this.#data[row][col] = value; },
+                        mutate: (value: number, row: number, col: number) => {
+                            this.#data[row][col] = value;
+                        },
                     },
                 };
             }
-            const data = { m: new Matrix([[1, 2], [3, 4]]) };
+            const data = {
+                m: new Matrix([
+                    [1, 2],
+                    [3, 4],
+                ]),
+            };
             Lens.mutate(data, ($) => ($("m") as any).cell(1, 0), 99);
             expect(data.m.getCell(1, 0)).toBe(99);
             expect(data.m.getCell(0, 1)).toBe(2); // unchanged
@@ -567,10 +681,14 @@ describe("Lens.mutate", () => {
         it("provides path for simple property access", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("address")("city"), (prev, _i, ctx) => {
-                captured = ctx;
-                return "Seattle";
-            });
+            Lens.mutate(
+                data,
+                ($) => $("address")("city"),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return "Seattle";
+                },
+            );
             expect(captured!.path).toEqual([P("address"), P("city")]);
             expect(captured!.index).toBe(0);
             expect(captured!.count).toBe(1);
@@ -579,20 +697,28 @@ describe("Lens.mutate", () => {
         it("provides path with numeric index", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("scores")(2), (prev, _i, ctx) => {
-                captured = ctx;
-                return 0;
-            });
+            Lens.mutate(
+                data,
+                ($) => $("scores")(2),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return 0;
+                },
+            );
             expect(captured!.path).toEqual([P("scores"), I(2)]);
         });
 
         it("provides index and count for each", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $.each()("name"), (prev, _i, ctx) => {
-                contexts.push(ctx);
-                return prev;
-            });
+            Lens.mutate(
+                data,
+                ($) => $.each()("name"),
+                (prev, _i, ctx) => {
+                    contexts.push(ctx);
+                    return prev;
+                },
+            );
             expect(contexts).toHaveLength(4);
             expect(contexts[0]).toEqual({ path: [I(0), P("name")], index: 0, count: 4 });
             expect(contexts[1]).toEqual({ path: [I(1), P("name")], index: 1, count: 4 });
@@ -603,10 +729,14 @@ describe("Lens.mutate", () => {
         it("provides index and count for filtered each", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"), (prev, _i, ctx) => {
-                contexts.push(ctx);
-                return prev;
-            });
+            Lens.mutate(
+                data,
+                ($) => $.where(($s) => [$s("role"), "=", "dev"]).each()("name"),
+                (prev, _i, ctx) => {
+                    contexts.push(ctx);
+                    return prev;
+                },
+            );
             // Alice(0) and Carol(2) are devs
             expect(contexts).toHaveLength(2);
             expect(contexts[0]).toEqual({ path: [I(0), P("name")], index: 0, count: 2 });
@@ -616,20 +746,28 @@ describe("Lens.mutate", () => {
         it("provides path for at() after filter", () => {
             const data = makeTeam();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, _i, ctx) => {
-                captured = ctx;
-                return "FIRST";
-            });
+            Lens.mutate(
+                data,
+                ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return "FIRST";
+                },
+            );
             expect(captured!.path).toEqual([I(0), P("name")]); // Alice is at index 0
         });
 
         it("provides path through nested each (2D)", () => {
             const data = makeMatrix();
             const paths: any[][] = [];
-            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev, _i, ctx) => {
-                paths.push([...ctx.path]);
-                return prev;
-            });
+            Lens.mutate(
+                data,
+                ($) => $("rows").each().each()("val"),
+                (prev, _i, ctx) => {
+                    paths.push([...ctx.path]);
+                    return prev;
+                },
+            );
             expect(paths).toEqual([
                 [P("rows"), I(0), I(0), P("val")],
                 [P("rows"), I(0), I(1), P("val")],
@@ -643,10 +781,14 @@ describe("Lens.mutate", () => {
         it("inner each resets index and count", () => {
             const data = makeMatrix();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $("rows").each().each()("val"), (prev, _i, ctx) => {
-                contexts.push({ ...ctx, path: [...ctx.path] });
-                return prev;
-            });
+            Lens.mutate(
+                data,
+                ($) => $("rows").each().each()("val"),
+                (prev, _i, ctx) => {
+                    contexts.push({ ...ctx, path: [...ctx.path] });
+                    return prev;
+                },
+            );
             // outer each: 3 rows, inner each: 2 items per row
             // inner each resets index/count for its own iteration
             expect(contexts[0]).toEqual({ path: [P("rows"), I(0), I(0), P("val")], index: 0, count: 2 });
@@ -659,10 +801,14 @@ describe("Lens.mutate", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
             // sort by age asc: Alice(25)→0, Carol(28)→2, Bob(35)→1, Dave(40)→3
-            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, _i, ctx) => {
-                contexts.push({ ...ctx, path: [...ctx.path] });
-                return `rank-${_i}`;
-            });
+            Lens.mutate(
+                data,
+                ($) => $.sort(($s) => $s("age"), "asc").each()("role"),
+                (prev, _i, ctx) => {
+                    contexts.push({ ...ctx, path: [...ctx.path] });
+                    return `rank-${_i}`;
+                },
+            );
             expect(contexts).toHaveLength(4);
             // Sorted order: Alice(idx 0), Carol(idx 2), Bob(idx 1), Dave(idx 3)
             expect(contexts[0].path).toEqual([I(0), P("role")]); // Alice
@@ -678,20 +824,28 @@ describe("Lens.mutate", () => {
         it("at() with negative index shows resolved positive index in path", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("scores").at(-1), (prev, _i, ctx) => {
-                captured = ctx;
-                return 0;
-            });
+            Lens.mutate(
+                data,
+                ($) => $("scores").at(-1),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return 0;
+                },
+            );
             expect(captured!.path).toEqual([P("scores"), I(3)]); // -1 resolves to index 3
         });
 
         it("at() after filter provides index 0, count 1", () => {
             const data = makeTeam();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"), (prev, _i, ctx) => {
-                captured = ctx;
-                return "FIRST";
-            });
+            Lens.mutate(
+                data,
+                ($) => $.where(($s) => [$s("role"), "=", "dev"]).at(0)("name"),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return "FIRST";
+                },
+            );
             expect(captured!.index).toBe(0);
             expect(captured!.count).toBe(1);
         });
@@ -699,60 +853,104 @@ describe("Lens.mutate", () => {
         it("Map .get() shows stringified key in path", () => {
             const data = makePerson();
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => $("prefs").get("fontSize"), (prev, _i, ctx) => {
-                captured = ctx;
-                return 16;
-            });
+            Lens.mutate(
+                data,
+                ($) => $("prefs").get("fontSize"),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return 16;
+                },
+            );
             expect(captured!.path).toEqual([P("prefs"), A("get", "fontSize")]);
         });
 
         it("custom named accessor shows prop() in path", () => {
-            const data = { pos: new (class {
-                #x = 3; #y = 4;
-                get x() { return this.#x; }
-                get y() { return this.#y; }
-                [LensNav] = {
-                    x: { select: () => this.#x, mutate: (v: number) => { this.#x = v; } },
-                    y: { select: () => this.#y, mutate: (v: number) => { this.#y = v; } },
-                };
-            })() };
+            const data = {
+                pos: new (class {
+                    #x = 3;
+                    #y = 4;
+                    get x() {
+                        return this.#x;
+                    }
+                    get y() {
+                        return this.#y;
+                    }
+                    [LensNav] = {
+                        x: {
+                            select: () => this.#x,
+                            mutate: (v: number) => {
+                                this.#x = v;
+                            },
+                        },
+                        y: {
+                            select: () => this.#y,
+                            mutate: (v: number) => {
+                                this.#y = v;
+                            },
+                        },
+                    };
+                })(),
+            };
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => ($("pos") as any).x(), (prev, _i, ctx) => {
-                captured = ctx;
-                return 10;
-            });
+            Lens.mutate(
+                data,
+                ($) => ($("pos") as any).x(),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return 10;
+                },
+            );
             expect(captured!.path).toEqual([P("pos"), A("x")]);
         });
 
         it("custom keyed accessor shows prop(key) in path", () => {
-            const data = { store: new (class {
-                #data: Record<string, number> = { alpha: 10, beta: 20 };
-                getVal(key: string) { return this.#data[key]; }
-                [LensNav] = { lookup: { select: (key: string) => this.#data[key], mutate: (value: number, key: string) => { this.#data[key] = value; } } };
-            })() };
+            const data = {
+                store: new (class {
+                    #data: Record<string, number> = { alpha: 10, beta: 20 };
+                    getVal(key: string) {
+                        return this.#data[key];
+                    }
+                    [LensNav] = {
+                        lookup: {
+                            select: (key: string) => this.#data[key],
+                            mutate: (value: number, key: string) => {
+                                this.#data[key] = value;
+                            },
+                        },
+                    };
+                })(),
+            };
             let captured: Lens.Context | undefined;
-            Lens.mutate(data, ($) => ($("store") as any).lookup("alpha"), (prev, _i, ctx) => {
-                captured = ctx;
-                return 99;
-            });
+            Lens.mutate(
+                data,
+                ($) => ($("store") as any).lookup("alpha"),
+                (prev, _i, ctx) => {
+                    captured = ctx;
+                    return 99;
+                },
+            );
             expect(captured!.path).toEqual([P("store"), A("lookup", "alpha")]);
         });
 
         it("sort + each count reflects sorted set size", () => {
             const data = makeTeam();
             const contexts: Lens.Context[] = [];
-            Lens.mutate(data, ($) => $.sort(($s) => $s("age"), "asc").each()("role"), (prev, _i, ctx) => {
-                contexts.push({ ...ctx, path: [...ctx.path] });
-                return prev;
-            });
+            Lens.mutate(
+                data,
+                ($) => $.sort(($s) => $s("age"), "asc").each()("role"),
+                (prev, _i, ctx) => {
+                    contexts.push({ ...ctx, path: [...ctx.path] });
+                    return prev;
+                },
+            );
             // all 4 are iterated
             expect(contexts.every((c) => c.count === 4)).toBe(true);
         });
     });
 
-    // ================================================================
+    // ------------------------------------------------------------====
     // each(callback) — per-element dynamic navigation
-    // ================================================================
+    // ------------------------------------------------------------====
 
     describe("each(callback)", () => {
         it("basic: each(el => el(field)) mutates like each()(field)", () => {
@@ -776,7 +974,11 @@ describe("Lens.mutate", () => {
                 { pointer: 0, vals: [10, 20] },
                 { pointer: 1, vals: [30, 40] },
             ];
-            Lens.mutate(data, ($) => $.each((el) => el("vals").at(el("pointer"))), (prev) => (prev as number) * 100);
+            Lens.mutate(
+                data,
+                ($) => $.each((el) => el("vals").at(el("pointer"))),
+                (prev) => (prev as number) * 100,
+            );
             expect(data[0].vals).toEqual([1000, 20]);
             expect(data[1].vals).toEqual([30, 4000]);
         });
@@ -794,9 +996,9 @@ describe("Lens.mutate", () => {
         });
     });
 
-    // ================================================================
+    // ------------------------------------------------------------====
     // Dynamic lens references — lens args in mutate context
-    // ================================================================
+    // ------------------------------------------------------------====
 
     describe("dynamic lens references", () => {
         it("$(n) with lens arg mutates correct element", () => {
@@ -806,7 +1008,13 @@ describe("Lens.mutate", () => {
         });
 
         it("Map.get() with lens arg mutates correct entry", () => {
-            const data = { key: "fontSize", prefs: new Map([["theme", 1], ["fontSize", 14]]) };
+            const data = {
+                key: "fontSize",
+                prefs: new Map([
+                    ["theme", 1],
+                    ["fontSize", 14],
+                ]),
+            };
             Lens.mutate(data, ($) => $("prefs").get($("key")), 20);
             expect(data.prefs.get("fontSize")).toBe(20);
             expect(data.prefs.get("theme")).toBe(1);
@@ -818,9 +1026,16 @@ describe("Lens.mutate", () => {
                 constructor(data: Record<string, number>) {
                     this.#data = { ...data };
                 }
-                getVal(key: string) { return this.#data[key]; }
+                getVal(key: string) {
+                    return this.#data[key];
+                }
                 [LensNav] = {
-                    lookup: { select: (key: string) => this.#data[key], mutate: (value: number, key: string) => { this.#data[key] = value; } },
+                    lookup: {
+                        select: (key: string) => this.#data[key],
+                        mutate: (value: number, key: string) => {
+                            this.#data[key] = value;
+                        },
+                    },
                 };
             }
             const data = { which: "beta", store: new Store({ alpha: 10, beta: 20 }) };
@@ -832,16 +1047,29 @@ describe("Lens.mutate", () => {
         it("multi-arg custom accessor with lens args mutates correctly", () => {
             class Matrix {
                 #data: number[][];
-                constructor(data: number[][]) { this.#data = data.map((r) => [...r]); }
-                getCell(row: number, col: number) { return this.#data[row][col]; }
+                constructor(data: number[][]) {
+                    this.#data = data.map((r) => [...r]);
+                }
+                getCell(row: number, col: number) {
+                    return this.#data[row][col];
+                }
                 [LensNav] = {
                     cell: {
                         select: (row: number, col: number) => this.#data[row][col],
-                        mutate: (value: number, row: number, col: number) => { this.#data[row][col] = value; },
+                        mutate: (value: number, row: number, col: number) => {
+                            this.#data[row][col] = value;
+                        },
                     },
                 };
             }
-            const data = { row: 0, col: 1, m: new Matrix([[1, 2], [3, 4]]) };
+            const data = {
+                row: 0,
+                col: 1,
+                m: new Matrix([
+                    [1, 2],
+                    [3, 4],
+                ]),
+            };
             Lens.mutate(data, ($) => ($("m") as any).cell($("row"), $("col")), 99);
             expect(data.m.getCell(0, 1)).toBe(99);
             expect(data.m.getCell(1, 0)).toBe(3); // unchanged
@@ -852,14 +1080,27 @@ describe("Lens.mutate", () => {
         it("mutates via each(callback) + custom accessor", () => {
             class Box {
                 #val: number;
-                constructor(val: number) { this.#val = val; }
-                get val() { return this.#val; }
+                constructor(val: number) {
+                    this.#val = val;
+                }
+                get val() {
+                    return this.#val;
+                }
                 [LensNav] = {
-                    value: { select: () => this.#val, mutate: (v: number) => { this.#val = v; } },
+                    value: {
+                        select: () => this.#val,
+                        mutate: (v: number) => {
+                            this.#val = v;
+                        },
+                    },
                 };
             }
             const data = [new Box(10), new Box(20), new Box(30)];
-            Lens.mutate(data, ($) => ($ as any).each().value(), (prev: number) => prev + 1);
+            Lens.mutate(
+                data,
+                ($) => ($ as any).each().value(),
+                (prev: number) => prev + 1,
+            );
             expect(data[0].val).toBe(11);
             expect(data[1].val).toBe(21);
             expect(data[2].val).toBe(31);
@@ -868,10 +1109,19 @@ describe("Lens.mutate", () => {
         it("mutates via each(callback) + keyed custom accessor with element-scoped lens arg", () => {
             class Store {
                 #data: Record<string, number>;
-                constructor(data: Record<string, number>) { this.#data = { ...data }; }
-                getVal(key: string) { return this.#data[key]; }
+                constructor(data: Record<string, number>) {
+                    this.#data = { ...data };
+                }
+                getVal(key: string) {
+                    return this.#data[key];
+                }
                 [LensNav] = {
-                    lookup: { select: (key: string) => this.#data[key], mutate: (value: number, key: string) => { this.#data[key] = value; } },
+                    lookup: {
+                        select: (key: string) => this.#data[key],
+                        mutate: (value: number, key: string) => {
+                            this.#data[key] = value;
+                        },
+                    },
                 };
             }
             const data = [
@@ -888,58 +1138,88 @@ describe("Lens.mutate", () => {
         // --- Nested each(callback) ---
 
         it("nested each(callback) + inner each(): mutates all nested items", () => {
-            const data = [
-                { items: ["a", "b", "c"] },
-                { items: ["d", "e"] },
-            ];
+            const data = [{ items: ["a", "b", "c"] }, { items: ["d", "e"] }];
             Lens.mutate(data, ($) => $.each((row) => row("items").each()), "x");
-            expect(data).toEqual([
-                { items: ["x", "x", "x"] },
-                { items: ["x", "x"] },
-            ]);
+            expect(data).toEqual([{ items: ["x", "x", "x"] }, { items: ["x", "x"] }]);
         });
 
         it("nested each(callback) + inner each(): mutates with updater function", () => {
-            const data = [
-                { items: [1, 2, 3] },
-                { items: [4, 5] },
-            ];
-            Lens.mutate(data, ($) => $.each((row) => row("items").each()), (prev: number) => prev * 10);
-            expect(data).toEqual([
-                { items: [10, 20, 30] },
-                { items: [40, 50] },
-            ]);
+            const data = [{ items: [1, 2, 3] }, { items: [4, 5] }];
+            Lens.mutate(
+                data,
+                ($) => $.each((row) => row("items").each()),
+                (prev: number) => prev * 10,
+            );
+            expect(data).toEqual([{ items: [10, 20, 30] }, { items: [40, 50] }]);
         });
 
         it("both each() with callbacks: nested callback navigation", () => {
             const data = [
-                { matrix: [[1, 2], [3, 4]] },
+                {
+                    matrix: [
+                        [1, 2],
+                        [3, 4],
+                    ],
+                },
                 { matrix: [[5, 6]] },
             ];
             Lens.mutate(data, ($) => $.each((group) => group("matrix").each((row) => row.at(0))), 0);
             expect(data).toEqual([
-                { matrix: [[0, 2], [0, 4]] },
+                {
+                    matrix: [
+                        [0, 2],
+                        [0, 4],
+                    ],
+                },
                 { matrix: [[0, 6]] },
             ]);
         });
 
         it("inner each(callback) using outer element lens for at()", () => {
             const data = [
-                { matrix: [[1, 2, 3], [4, 5, 6]], colPick: 0 },
-                { matrix: [[7, 8], [9, 10]], colPick: 1 },
+                {
+                    matrix: [
+                        [1, 2, 3],
+                        [4, 5, 6],
+                    ],
+                    colPick: 0,
+                },
+                {
+                    matrix: [
+                        [7, 8],
+                        [9, 10],
+                    ],
+                    colPick: 1,
+                },
             ];
             Lens.mutate(data, ($) => $.each((group) => group("matrix").each((row) => row.at(group("colPick")))), 99);
             expect(data).toEqual([
-                { matrix: [[99, 2, 3], [99, 5, 6]], colPick: 0 },
-                { matrix: [[7, 99], [9, 99]], colPick: 1 },
+                {
+                    matrix: [
+                        [99, 2, 3],
+                        [99, 5, 6],
+                    ],
+                    colPick: 0,
+                },
+                {
+                    matrix: [
+                        [7, 99],
+                        [9, 99],
+                    ],
+                    colPick: 1,
+                },
             ]);
         });
 
         it("read-only custom accessor is a no-op when mutated", () => {
             class Stats {
                 #values: number[];
-                constructor(values: number[]) { this.#values = [...values]; }
-                getValues() { return [...this.#values]; }
+                constructor(values: number[]) {
+                    this.#values = [...values];
+                }
+                getValues() {
+                    return [...this.#values];
+                }
                 [LensNav] = {
                     sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
                 };

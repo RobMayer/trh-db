@@ -3,6 +3,10 @@ import { GraphLinkId, GraphLinkLens, GraphLinkOf, GraphLinkSelector, GraphNodeId
 export class GraphDB<N, L> {
     //#region CRUD operations
 
+    #data: { [id: string]: (GraphNodeOf<N> & { type: "node" }) | (GraphLinkOf<L> & { type: "link" }) } = {}; // lump data - easier for codecs
+    #nodes: { [id: string]: string } = {}; // node lookups
+    #links: { [id: string]: string } = {}; // link lookups
+
     select: {
         (lens: GraphNodeLens<N, L>): unknown; // select link(s), node(s), or property(s)
     } = () => {};
