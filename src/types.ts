@@ -82,12 +82,11 @@ export interface Typeable {
     [TypeOf]: () => string;
 }
 
-// Custom lens accessors — object protocol with select/mutate?/apply?
+// Custom lens accessors — object protocol with access|compute + mutate?/apply?
 
 export interface LensNavigable {
     [LensNav]: {
-        [method: string]: {
-            select: (...args: any[]) => any;
+        [method: string]: ({ access: (...args: any[]) => any } | { compute: (...args: any[]) => any }) & {
             mutate?: (...args: any[]) => any;
             apply?: (...args: any[]) => any;
         };

@@ -17,8 +17,7 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
 
     // Always available — read-only (Target = never)
     transform<R>(transformer: (subject: NonNullable<Chain>) => R): DataLens<never, WrapEval<Eval, Chain, R>, R>;
-} & // Readonly marker: when Target = never, adds a brand that structurally conflicts with MutatorLensOf/ApplierLensOf
-    ([Target] extends [never] ? { readonly [BRAND_READONLY]: true } : {}) &
+} & ([Target] extends [never] ? { readonly [BRAND_READONLY]: true } : {}) & // Readonly marker: when Target = never, adds a brand that structurally conflicts with MutatorLensOf/ApplierLensOf
     // String
     (NonNullable<Chain> extends string
         ? {
@@ -35,7 +34,10 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
               where(pred: ($: DataLens<never, ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): DataLens<never, Eval, Chain>;
               filter(fn: (item: ElementOf<Chain>) => boolean): DataLens<never, Eval, Chain>;
               slice(start: number | SelectorLensOf<number>, end?: number | SelectorLensOf<number>): DataLens<never, Eval, Chain>;
-              sort<R extends string | number | bigint | Comparable | null | undefined>(target: ($: DataLens<never, ElementOf<Chain>>) => SelectorLensOf<R>, dir: SortDirection): DataLens<never, Eval, Chain>;
+              sort<R extends string | number | bigint | Comparable | null | undefined>(
+                  target: ($: DataLens<never, ElementOf<Chain>>) => SelectorLensOf<R>,
+                  dir: SortDirection,
+              ): DataLens<never, Eval, Chain>;
               sort(comparator: (a: E, b: E) => number): DataLens<never, Eval, Chain>;
               size(): DataLens<never, WrapEval<Eval, Chain, number>, number>;
               length(): DataLens<never, WrapEval<Eval, Chain, number>, number>;
@@ -76,18 +78,16 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
               size(): DataLens<never, WrapEval<Eval, Chain, number>, number>;
           }
         : {}) &
-    // Custom accessors (LensNav — object protocol with select/mutate?/apply?)
+    // Custom accessors (LensNav — object protocol with access|compute + mutate?/apply?)
+    // access: deterministic navigation — usable on PathLens, DataLens, MutatorLens, ApplierLens
+    // compute: derived value — usable on DataLens only (always read-only, Target = never)
     (NonNullable<Chain> extends { [LensNav]: infer Methods }
         ? {
-              [M in keyof Methods]: Methods[M] extends { select: (...args: infer A) => infer VT }
-                  ? (...args: MapSelectorLensOf<A>) => DataLens<
-                        Methods[M] extends { mutate: any } | { apply: any }
-                            ? KeepTarget<Target, Chain, VT>
-                            : never,
-                        WrapEval<Eval, Chain, VT>,
-                        VT
-                    >
-                  : never;
+              [M in keyof Methods]: Methods[M] extends { access: (...args: infer A) => infer VT }
+                  ? (...args: MapSelectorLensOf<A>) => DataLens<Methods[M] extends { mutate: any } | { apply: any } ? KeepTarget<Target, Chain, VT> : never, WrapEval<Eval, Chain, VT>, VT>
+                  : Methods[M] extends { compute: (...args: infer A) => infer VT }
+                      ? (...args: MapSelectorLensOf<A>) => DataLens<never, WrapEval<Eval, Chain, VT>, VT>
+                      : never;
           }
         : {});
 
@@ -128,5 +128,36 @@ export type ApplierLensOf<E> = { readonly [BRAND_TARGET]: E; readonly [BRAND_REA
 export type SelectorLens<Eval, Chain = Eval> = DataLens<Eval, Eval, Chain>;
 export type MutatorLens<Target, Chain = Target> = DataLens<Target, Target, Chain>;
 export type ApplierLens<Target, Chain = Target> = DataLens<Target, Target, Chain>;
+
+// SimpleLens — deterministic path navigation for describing fixed paths (e.g., index definitions)
+// Supports: property access, array index/at, Map.get, custom accessors (select only).
+// Excludes: each/where/filter/sort/slice/transform/size/length/keys/values/entries/has — no set ops or computed values.
+export type PathLens<T> = {
+    readonly [BRAND_EVAL]: T;
+} & (NonNullable<T> extends (infer E)[] | readonly (infer E)[] // Array — index access and at()
+    ? {
+          (index: number): PathLens<E>;
+          at(index: number): PathLens<E>;
+      }
+    : {}) &
+    // Any-object — string key access
+    (NonNullable<T> extends object
+        ? {
+              <Key extends AllStringKeys<T>>(key: Key): PathLens<SafeLookup<T, Key>>;
+          }
+        : {}) &
+    // Map — get()
+    (NonNullable<T> extends Map<infer MK, infer MV>
+        ? {
+              get(key: MK): PathLens<MV>;
+          }
+        : {}) &
+    // Custom accessors — access only (deterministic navigation for indexing/mutation paths)
+    // compute-only accessors are excluded — PathLens is for fixed paths, not derived values
+    (NonNullable<T> extends { [LensNav]: infer Methods }
+        ? {
+              [M in keyof Methods]: Methods[M] extends { access: (...args: infer A) => infer VT } ? (...args: A) => PathLens<VT> : never;
+          }
+        : {});
 
 //#endregion

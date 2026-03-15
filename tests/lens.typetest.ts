@@ -88,9 +88,9 @@ const nu_label: SelectorLens<string | undefined> = nu$("meta")("label");
 
 class Example implements LensNavigable {
     [LensNav] = {
-        link: { select: (key: string) => "hi" as string, mutate: (value: string, key: string) => {} },
-        node: { select: (key: string) => 0 as number, mutate: (value: number, key: string) => {} },
-        has: { select: (key: string) => false as boolean },
+        link: { access: (key: string) => "hi" as string, mutate: (value: string, key: string) => {} },
+        node: { access: (key: string) => 0 as number, mutate: (value: number, key: string) => {} },
+        has: { compute: (key: string) => false as boolean },
     };
 }
 
@@ -247,8 +247,22 @@ testMutate(testData, ($) => $("roles").filter(() => true), ["a"]);
 testMutate(testData, ($) => $("roles").slice(0, 1), ["a"]);
 
 // But where + each/at restores Target — should compile
-testMutate(testData, ($) => $("roles").where(($s) => [$s, "?"]).each(), "new");
-testMutate(testData, ($) => $("roles").where(($s) => [$s, "?"]).at(0), "new");
+testMutate(
+    testData,
+    ($) =>
+        $("roles")
+            .where(($s) => [$s, "?"])
+            .each(),
+    "new",
+);
+testMutate(
+    testData,
+    ($) =>
+        $("roles")
+            .where(($s) => [$s, "?"])
+            .at(0),
+    "new",
+);
 
 // ============================================================
 // each(callback) — type-level tests
@@ -258,7 +272,9 @@ testMutate(testData, ($) => $("roles").where(($s) => [$s, "?"]).at(0), "new");
 const ec_names: DataLens<string, string[], string> = e$("addresses").each((el) => el("type"));
 
 // Chaining after each(callback) — chain is string, so property access on string
-const ec_chain: DataLens<never, number[], number> = e$("addresses").each((el) => el("type")).size();
+const ec_chain: DataLens<never, number[], number> = e$("addresses")
+    .each((el) => el("type"))
+    .size();
 
 // each(callback) with mutable path — valid mutation terminal
 testMutate(eachTestData, ($) => $("addresses").each((el) => el("type")), "new");
@@ -287,8 +303,8 @@ testApply(optTestData, ($) => $("someExample").has("test"), true);
 // Multi-arg custom accessor type test
 class MultiArgExample implements LensNavigable {
     [LensNav] = {
-        cell: { select: (row: number, col: number) => 0 as number, mutate: (value: number, row: number, col: number) => {} },
-        computed: { select: (row: number, col: number) => "" as string },
+        cell: { access: (row: number, col: number) => 0 as number, mutate: (value: number, row: number, col: number) => {} },
+        computed: { compute: (row: number, col: number) => "" as string },
     };
 }
 
@@ -369,3 +385,111 @@ const d_ma_cell_lens: SelectorLens<number> = ma$("m").cell(d$("idx"), d$("idx"))
 // --- Mutation with custom accessor lens arg — should compile ---
 testMutate(optTestData, ($) => $("someExample").link($("name")), "new");
 testMutate(maData, ($) => $("m").cell(d$("idx"), d$("idx")), 99);
+
+// ============================================================
+// SimpleLens — Property-Only Navigation
+// ============================================================
+
+import { PathLens } from "../src/util/lens/types";
+
+type IndexData = {
+    name: string;
+    age: number;
+    active: boolean;
+    nested: { score: number; label: string };
+    tags: string[];
+};
+
+declare const s$: PathLens<IndexData>;
+
+// --- Top-level property access ---
+const s_name: PathLens<string> = s$("name");
+const s_age: PathLens<number> = s$("age");
+const s_active: PathLens<boolean> = s$("active");
+
+// --- Nested property access ---
+const s_score: PathLens<number> = s$("nested")("score");
+const s_label: PathLens<string> = s$("nested")("label");
+
+// --- Terminal on non-object: no further chaining ---
+// string/number/boolean SimpleLens should not be callable
+// (structurally enforced: NonNullable<string> extends object is false → no call signature)
+
+// --- Array index access and at() ---
+const s_first_tag: PathLens<string> = s$("tags")(0);
+const s_tag_at: PathLens<string> = s$("tags").at(2);
+
+// --- Map get() ---
+type MapIndex = { prefs: Map<string, number>; nested: { lookup: Map<string, boolean> } };
+declare const sm$: PathLens<MapIndex>;
+
+const sm_pref: PathLens<number> = sm$("prefs").get("theme");
+const sm_nested_lookup: PathLens<boolean> = sm$("nested")("lookup").get("flag");
+
+// --- Custom accessor (path vs select distinction) ---
+type SimpleCustomData = { ex: Example; m: MultiArgExample };
+declare const sc$: PathLens<SimpleCustomData>;
+
+// path accessors — visible to PathLens
+const s_example_link: PathLens<string> = sc$("ex").link("test");
+const s_example_node: PathLens<number> = sc$("ex").node("test");
+
+// select-only accessors — NOT visible to PathLens
+// @ts-expect-error — has() is select-only, not navigable via PathLens
+sc$("ex").has("test");
+
+// --- Multi-arg custom accessor (path) ---
+const s_ma_cell: PathLens<number> = sc$("m").cell(0, 1);
+
+// @ts-expect-error — computed() is select-only, not navigable via PathLens
+sc$("m").computed(0, 1);
+
+// --- SimpleLens should NOT have DataLens-only methods ---
+// @ts-expect-error — no .size() on SimpleLens
+s$("name").size();
+// @ts-expect-error — no .each() on SimpleLens
+s$("tags").each();
+// @ts-expect-error — no .transform() on SimpleLens
+s$("name").transform((s: string) => s.length);
+// @ts-expect-error — no .keys() on SimpleLens
+s$("nested").keys();
+// @ts-expect-error — no .values() on SimpleLens
+s$("nested").values();
+// @ts-expect-error — no .entries() on SimpleLens
+s$("nested").entries();
+// @ts-expect-error — no .where() on SimpleLens
+s$("tags").where(() => true);
+// @ts-expect-error — no .filter() on SimpleLens
+s$("tags").filter(() => true);
+// @ts-expect-error — no .slice() on SimpleLens
+s$("tags").slice(0, 1);
+// @ts-expect-error — no .sort() on SimpleLens
+s$("tags").sort(() => 0);
+// @ts-expect-error — no .length() on SimpleLens
+s$("tags").length();
+// @ts-expect-error — no .has() on Map via SimpleLens
+sm$("prefs").has("key");
+// @ts-expect-error — no .keys() on Map via SimpleLens
+sm$("prefs").keys();
+// @ts-expect-error — no .values() on Map via SimpleLens
+sm$("prefs").values();
+// @ts-expect-error — no .entries() on Map via SimpleLens
+sm$("prefs").entries();
+// @ts-expect-error — no .size() on Map via SimpleLens
+sm$("prefs").size();
+
+// --- Union-safe navigation ---
+type UnionIndex = { type: "a"; x: number } | { type: "b"; y: string };
+declare const su$: PathLens<UnionIndex>;
+
+const su_type: PathLens<"a" | "b"> = su$("type");
+const su_x: PathLens<number | undefined> = su$("x");
+const su_y: PathLens<string | undefined> = su$("y");
+
+// --- Optional fields ---
+type OptIndex = { name: string; nick?: string; nested: { val: number; tag?: string } };
+declare const so$: PathLens<OptIndex>;
+
+const so_name: PathLens<string> = so$("name");
+const so_nick: PathLens<string | undefined> = so$("nick");
+const so_tag: PathLens<string | undefined> = so$("nested")("tag");

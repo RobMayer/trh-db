@@ -1,5 +1,5 @@
 import { CollectionId, CollectionMemberOf, ListOf, Updater } from "../types";
-import { DataLens, SelectorLens } from "../util/lens/types";
+import { DataLens, SelectorLens, PathLens } from "../util/lens/types";
 import { LogicalOps, PredicateResult } from "../util/logic";
 import { Predicate } from "../util/predicate";
 
@@ -36,11 +36,11 @@ export class CollectionDB<D> {
 
     addIndex: {
         // index options as second arg?
-        <T>(lens: ($: SimpleLens<D>) => SimpleLens<T>): void;
+        <T>(lens: ($: PathLens<D>) => PathLens<T>): void;
     } = () => ({}) as any;
 
     dropIndex: {
-        <T>(lens: ($: SimpleLens<D>) => SimpleLens<T>): void;
+        <T>(lens: ($: PathLens<D>) => PathLens<T>): void;
     } = () => ({}) as any;
 }
 
