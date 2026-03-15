@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@trh/symbols':
-        specifier: ^1.2.1
-        version: 1.2.1
+        specifier: ^2.0.0
+        version: 2.0.0
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -514,8 +514,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@trh/symbols@1.2.1':
-    resolution: {integrity: sha512-toSgttBBDjmSDUmOtoGKd/+abOGJHy60Tx4d8r/aAIhaUlob4gayiFqU7bjGz7GEza79t2dr5Bc6m1HiqNqnYw==}
+  '@trh/symbols@2.0.0':
+    resolution: {integrity: sha512-vYBxGBra+vguiyMxIlVUNhirCaB5AF8G35E7ftzobGP7wlqI1SNFDcHPJEferSoYIe+3ya91DBBMdVUq7/kV7w==}
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -1650,7 +1650,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@trh/symbols@1.2.1': {}
+  '@trh/symbols@2.0.0': {}
 
   '@tybys/wasm-util@0.10.1':
     dependencies:

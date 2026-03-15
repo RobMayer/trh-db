@@ -20,6 +20,6 @@
         "vitest": "^4.1.0"
     },
     "dependencies": {
-        "@trh/symbols": "^1.2.1"
+        "@trh/symbols": "^2.0.0"
     }
 }
