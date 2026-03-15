@@ -145,8 +145,8 @@ function performEquality(a: unknown, b: unknown): boolean {
         const result = (b as any)[TrhSymbols.Equals](a);
         if (result !== null) return result;
     }
-    // 3. Strict equality fallback
-    return a === b;
+    // 3. Loose equality fallback
+    return a == b;
 }
 
 function resolveTypeOf(value: unknown): string {
@@ -219,7 +219,7 @@ export function sortCompare(a: unknown, b: unknown): number {
 
 const OPS: Record<string, (subject: any, operand: any, operand2?: any) => boolean> = {
     "=": (s, o) => performEquality(s, o),
-    "==": (s, o) => s == o,
+    "==": (s, o) => s === o,
     ">": (s, o) => {
         const c = compare(s, o);
         return c !== null && c > 0;

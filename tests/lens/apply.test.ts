@@ -399,8 +399,8 @@ describe("Lens.apply", () => {
                 return this.#y;
             }
             [TrhSymbols.LensNav] = {
-                x: { select: () => this.#x, apply: (value: number) => new Vector2(value, this.#y) },
-                y: { select: () => this.#y, apply: (value: number) => new Vector2(this.#x, value) },
+                x: { access: () => this.#x, apply: (value: number) => new Vector2(value, this.#y) },
+                y: { access: () => this.#y, apply: (value: number) => new Vector2(this.#x, value) },
             };
         }
 
@@ -434,7 +434,7 @@ describe("Lens.apply", () => {
             }
             [TrhSymbols.LensNav] = {
                 lookup: {
-                    select: (key: string) => this.#data[key],
+                    access: (key: string) => this.#data[key],
                     apply: (value: number, key: string) => {
                         const next = new KeyedStore(this.#data);
                         next.#data[key] = value;
@@ -465,7 +465,7 @@ describe("Lens.apply", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     cell: {
-                        select: (row: number, col: number) => this.#data[row][col],
+                        access: (row: number, col: number) => this.#data[row][col],
                         apply: (value: number, row: number, col: number) => {
                             const next = new Matrix(this.#data);
                             next.#data[row][col] = value;
@@ -782,8 +782,8 @@ describe("Lens.apply", () => {
                         return this.#y;
                     }
                     [TrhSymbols.LensNav] = {
-                        x: { select: () => this.#x, apply: (v: number) => new (this.constructor as any)(v, this.#y) },
-                        y: { select: () => this.#y, apply: (v: number) => new (this.constructor as any)(this.#x, v) },
+                        x: { access: () => this.#x, apply: (v: number) => new (this.constructor as any)(v, this.#y) },
+                        y: { access: () => this.#y, apply: (v: number) => new (this.constructor as any)(this.#x, v) },
                     };
                 })(),
             };
@@ -808,7 +808,7 @@ describe("Lens.apply", () => {
                     }
                     [TrhSymbols.LensNav] = {
                         lookup: {
-                            select: (key: string) => this.#data[key],
+                            access: (key: string) => this.#data[key],
                             apply: (value: number, key: string) => {
                                 const n = new (this.constructor as any)();
                                 n.#data = { ...this.#data, [key]: value };
@@ -925,7 +925,7 @@ describe("Lens.apply", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     lookup: {
-                        select: (key: string) => this.#data[key],
+                        access: (key: string) => this.#data[key],
                         apply: (value: number, key: string) => {
                             const next = new Store(this.#data);
                             next.#data[key] = value;
@@ -952,7 +952,7 @@ describe("Lens.apply", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     cell: {
-                        select: (row: number, col: number) => this.#data[row][col],
+                        access: (row: number, col: number) => this.#data[row][col],
                         apply: (value: number, row: number, col: number) => {
                             const next = new Matrix(this.#data);
                             next.#data[row][col] = value;
@@ -986,7 +986,7 @@ describe("Lens.apply", () => {
                     return this.#val;
                 }
                 [TrhSymbols.LensNav] = {
-                    value: { select: () => this.#val, apply: (v: number) => new Box(v) },
+                    value: { access: () => this.#val, apply: (v: number) => new Box(v) },
                 };
             }
             const data = [new Box(10), new Box(20), new Box(30)];
@@ -1012,7 +1012,7 @@ describe("Lens.apply", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     lookup: {
-                        select: (key: string) => this.#data[key],
+                        access: (key: string) => this.#data[key],
                         apply: (value: number, key: string) => {
                             const next = new Store(this.#data);
                             next.#data[key] = value;
@@ -1124,7 +1124,7 @@ describe("Lens.apply", () => {
                     return [...this.#values];
                 }
                 [TrhSymbols.LensNav] = {
-                    sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
+                    sum: { compute: () => this.#values.reduce((a, b) => a + b, 0) },
                 };
             }
             const data = { s: new Stats([10, 20, 30]) };

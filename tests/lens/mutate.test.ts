@@ -590,13 +590,13 @@ describe("Lens.mutate", () => {
             }
             [TrhSymbols.LensNav] = {
                 x: {
-                    select: () => this.#x,
+                    access: () => this.#x,
                     mutate: (value: number) => {
                         this.#x = value;
                     },
                 },
                 y: {
-                    select: () => this.#y,
+                    access: () => this.#y,
                     mutate: (value: number) => {
                         this.#y = value;
                     },
@@ -631,7 +631,7 @@ describe("Lens.mutate", () => {
             }
             [TrhSymbols.LensNav] = {
                 lookup: {
-                    select: (key: string) => this.#data[key],
+                    access: (key: string) => this.#data[key],
                     mutate: (value: number, key: string) => {
                         this.#data[key] = value;
                     },
@@ -658,7 +658,7 @@ describe("Lens.mutate", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     cell: {
-                        select: (row: number, col: number) => this.#data[row][col],
+                        access: (row: number, col: number) => this.#data[row][col],
                         mutate: (value: number, row: number, col: number) => {
                             this.#data[row][col] = value;
                         },
@@ -877,13 +877,13 @@ describe("Lens.mutate", () => {
                     }
                     [TrhSymbols.LensNav] = {
                         x: {
-                            select: () => this.#x,
+                            access: () => this.#x,
                             mutate: (v: number) => {
                                 this.#x = v;
                             },
                         },
                         y: {
-                            select: () => this.#y,
+                            access: () => this.#y,
                             mutate: (v: number) => {
                                 this.#y = v;
                             },
@@ -912,7 +912,7 @@ describe("Lens.mutate", () => {
                     }
                     [TrhSymbols.LensNav] = {
                         lookup: {
-                            select: (key: string) => this.#data[key],
+                            access: (key: string) => this.#data[key],
                             mutate: (value: number, key: string) => {
                                 this.#data[key] = value;
                             },
@@ -1031,7 +1031,7 @@ describe("Lens.mutate", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     lookup: {
-                        select: (key: string) => this.#data[key],
+                        access: (key: string) => this.#data[key],
                         mutate: (value: number, key: string) => {
                             this.#data[key] = value;
                         },
@@ -1055,7 +1055,7 @@ describe("Lens.mutate", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     cell: {
-                        select: (row: number, col: number) => this.#data[row][col],
+                        access: (row: number, col: number) => this.#data[row][col],
                         mutate: (value: number, row: number, col: number) => {
                             this.#data[row][col] = value;
                         },
@@ -1088,7 +1088,7 @@ describe("Lens.mutate", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     value: {
-                        select: () => this.#val,
+                        access: () => this.#val,
                         mutate: (v: number) => {
                             this.#val = v;
                         },
@@ -1117,7 +1117,7 @@ describe("Lens.mutate", () => {
                 }
                 [TrhSymbols.LensNav] = {
                     lookup: {
-                        select: (key: string) => this.#data[key],
+                        access: (key: string) => this.#data[key],
                         mutate: (value: number, key: string) => {
                             this.#data[key] = value;
                         },
@@ -1221,7 +1221,7 @@ describe("Lens.mutate", () => {
                     return [...this.#values];
                 }
                 [TrhSymbols.LensNav] = {
-                    sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
+                    sum: { compute: () => this.#values.reduce((a, b) => a + b, 0) },
                 };
             }
             const data = { s: new Stats([10, 20, 30]) };

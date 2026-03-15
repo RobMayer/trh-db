@@ -343,7 +343,8 @@ function createProxy(state: LensState): any {
                 // Custom accessors (LensNav — object protocol)
                 const customDispatch = (v: any): ((...args: any[]) => unknown) | undefined => {
                     const accessor = v?.[TrhSymbols.LensNav]?.[prop];
-                    return accessor && typeof accessor.select === "function" ? (...args: any[]) => accessor.select(...args) : undefined;
+                    const read = accessor?.access ?? accessor?.compute;
+                    return typeof read === "function" ? (...args: any[]) => read(...args) : undefined;
                 };
 
                 if (isEach) {
@@ -510,9 +511,10 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
         }
         case "custom": {
             const accessor = current?.[TrhSymbols.LensNav]?.[step.prop];
-            if (accessor?.select) {
+            const read = accessor?.access ?? accessor?.compute;
+            if (read) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, ...step.args.map(String))] };
-                const readValue = accessor.select(...step.args);
+                const readValue = read(...step.args);
                 const newValue = doApply(readValue, steps, next, updater, childCtx);
                 return accessor.apply?.(newValue, ...step.args) ?? current;
             }
@@ -591,9 +593,10 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
         }
         case "custom": {
             const accessor = current?.[TrhSymbols.LensNav]?.[step.prop];
-            if (accessor?.select) {
+            const read = accessor?.access ?? accessor?.compute;
+            if (read) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, ...step.args.map(String))] };
-                const readValue = accessor.select(...step.args);
+                const readValue = read(...step.args);
                 if (atLeaf) accessor.mutate?.(updater(readValue, ctx.index, childCtx), ...step.args);
                 else accessor.mutate?.(doApply(readValue, steps, next, updater, childCtx), ...step.args);
             }

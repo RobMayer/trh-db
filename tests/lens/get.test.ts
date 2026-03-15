@@ -391,7 +391,7 @@ describe("Lens.get", () => {
                 this.#entries = entries;
             }
             [TrhSymbols.LensNav] = {
-                lookup: { select: (key: string) => this.#entries[key] ?? -1 },
+                lookup: { access: (key: string) => this.#entries[key] ?? -1 },
             };
         }
 
@@ -407,7 +407,7 @@ describe("Lens.get", () => {
                 this.#data = data;
             }
             [TrhSymbols.LensNav] = {
-                fetch: { select: (key: string) => this.#data.get(key) ?? null },
+                fetch: { access: (key: string) => this.#data.get(key) ?? null },
             };
         }
 
@@ -851,7 +851,7 @@ describe("Lens.get", () => {
                     this.#entries = entries;
                 }
                 [TrhSymbols.LensNav] = {
-                    lookup: { select: (key: string) => this.#entries[key] ?? -1 },
+                    lookup: { access: (key: string) => this.#entries[key] ?? -1 },
                 };
             }
             const data = { which: "beta", reg: new Registry({ alpha: 10, beta: 20, gamma: 30 }) };
@@ -866,7 +866,7 @@ describe("Lens.get", () => {
                     this.#data = data;
                 }
                 [TrhSymbols.LensNav] = {
-                    lookup: { select: (key: string) => this.#data[key] ?? 0 },
+                    lookup: { access: (key: string) => this.#data[key] ?? 0 },
                 };
             }
             const data = [
@@ -884,7 +884,7 @@ describe("Lens.get", () => {
                     this.#data = data;
                 }
                 [TrhSymbols.LensNav] = {
-                    cell: { select: (row: number, col: number) => this.#data[row][col] },
+                    cell: { access: (row: number, col: number) => this.#data[row][col] },
                 };
             }
             const data = {
@@ -904,7 +904,7 @@ describe("Lens.get", () => {
                     this.#data = data;
                 }
                 [TrhSymbols.LensNav] = {
-                    cell: { select: (row: number, col: number) => this.#data[row][col] },
+                    cell: { access: (row: number, col: number) => this.#data[row][col] },
                 };
             }
             const data = {
@@ -926,7 +926,7 @@ describe("Lens.get", () => {
                     this.#count = count;
                 }
                 [TrhSymbols.LensNav] = {
-                    value: { select: () => this.#count },
+                    value: { access: () => this.#count },
                 };
             }
             const data = { c: new Counter(42) };
@@ -940,7 +940,7 @@ describe("Lens.get", () => {
                     this.#inner = inner;
                 }
                 [TrhSymbols.LensNav] = {
-                    item: { select: (key: string) => this.#inner },
+                    item: { access: (key: string) => this.#inner },
                 };
             }
             const data = { c: new Container({ label: "hello", count: 5 }) };
@@ -955,9 +955,9 @@ describe("Lens.get", () => {
                     this.#values = values;
                 }
                 [TrhSymbols.LensNav] = {
-                    item: { select: (idx: number) => this.#values[idx] },
-                    sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
-                    avg: { select: () => this.#values.reduce((a, b) => a + b, 0) / this.#values.length },
+                    item: { access: (idx: number) => this.#values[idx] },
+                    sum: { compute: () => this.#values.reduce((a, b) => a + b, 0) },
+                    avg: { compute: () => this.#values.reduce((a, b) => a + b, 0) / this.#values.length },
                 };
             }
             const data = { s: new Stats([10, 20, 30]) };
@@ -973,7 +973,7 @@ describe("Lens.get", () => {
                     this.#val = val;
                 }
                 [TrhSymbols.LensNav] = {
-                    value: { select: () => this.#val },
+                    value: { access: () => this.#val },
                 };
             }
             const data = { boxes: [new Box(10), new Box(20), new Box(30)] };
