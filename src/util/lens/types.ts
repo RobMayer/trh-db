@@ -1,4 +1,5 @@
-import { LensNav, AllStringKeys, SafeLookup, Comparable } from "../../types";
+import { TrhSymbols } from "@trh/symbols";
+import { AllStringKeys, SafeLookup } from "../../types";
 import { LogicalOps, PredicateResult } from "../logic";
 import { Predicate } from "../predicate";
 
@@ -34,7 +35,7 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
               where(pred: ($: DataLens<never, ElementOf<Chain>> & LogicalOps) => Predicate<any> | PredicateResult): DataLens<never, Eval, Chain>;
               filter(fn: (item: ElementOf<Chain>) => boolean): DataLens<never, Eval, Chain>;
               slice(start: number | SelectorLensOf<number>, end?: number | SelectorLensOf<number>): DataLens<never, Eval, Chain>;
-              sort<R extends string | number | bigint | Comparable | null | undefined>(
+              sort<R extends string | number | bigint | TrhSymbols.Comparable | null | undefined>(
                   target: ($: DataLens<never, ElementOf<Chain>>) => SelectorLensOf<R>,
                   dir: SortDirection,
               ): DataLens<never, Eval, Chain>;
@@ -81,13 +82,13 @@ export type DataLens<Target, Eval = Target, Chain = Eval> = {
     // Custom accessors (LensNav — object protocol with access|compute + mutate?/apply?)
     // access: deterministic navigation — usable on PathLens, DataLens, MutatorLens, ApplierLens
     // compute: derived value — usable on DataLens only (always read-only, Target = never)
-    (NonNullable<Chain> extends { [LensNav]: infer Methods }
+    (NonNullable<Chain> extends { [TrhSymbols.LensNav]: infer Methods }
         ? {
               [M in keyof Methods]: Methods[M] extends { access: (...args: infer A) => infer VT }
                   ? (...args: MapSelectorLensOf<A>) => DataLens<Methods[M] extends { mutate: any } | { apply: any } ? KeepTarget<Target, Chain, VT> : never, WrapEval<Eval, Chain, VT>, VT>
                   : Methods[M] extends { compute: (...args: infer A) => infer VT }
-                      ? (...args: MapSelectorLensOf<A>) => DataLens<never, WrapEval<Eval, Chain, VT>, VT>
-                      : never;
+                    ? (...args: MapSelectorLensOf<A>) => DataLens<never, WrapEval<Eval, Chain, VT>, VT>
+                    : never;
           }
         : {});
 
@@ -154,7 +155,7 @@ export type PathLens<T> = {
         : {}) &
     // Custom accessors — access only (deterministic navigation for indexing/mutation paths)
     // compute-only accessors are excluded — PathLens is for fixed paths, not derived values
-    (NonNullable<T> extends { [LensNav]: infer Methods }
+    (NonNullable<T> extends { [TrhSymbols.LensNav]: infer Methods }
         ? {
               [M in keyof Methods]: Methods[M] extends { access: (...args: infer A) => infer VT } ? (...args: A) => PathLens<VT> : never;
           }

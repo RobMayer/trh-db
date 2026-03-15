@@ -1,5 +1,5 @@
 import { LensPathSegment } from "../types";
-import { sortCompare } from "./lens";
+import { sortCompare } from "./predicate";
 
 //#region - Path Serialization
 

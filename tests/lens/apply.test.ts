@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensNav } from "../../src/types";
+import { TrhSymbols } from "@trh/symbols";
 
 // Path segment helpers for assertions
 const P = (key: string) => ({ type: "property" as const, key });
@@ -398,7 +398,7 @@ describe("Lens.apply", () => {
             get y() {
                 return this.#y;
             }
-            [LensNav] = {
+            [TrhSymbols.LensNav] = {
                 x: { select: () => this.#x, apply: (value: number) => new Vector2(value, this.#y) },
                 y: { select: () => this.#y, apply: (value: number) => new Vector2(this.#x, value) },
             };
@@ -432,7 +432,7 @@ describe("Lens.apply", () => {
             getVal(key: string) {
                 return this.#data[key];
             }
-            [LensNav] = {
+            [TrhSymbols.LensNav] = {
                 lookup: {
                     select: (key: string) => this.#data[key],
                     apply: (value: number, key: string) => {
@@ -463,7 +463,7 @@ describe("Lens.apply", () => {
                 getCell(row: number, col: number) {
                     return this.#data[row][col];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     cell: {
                         select: (row: number, col: number) => this.#data[row][col],
                         apply: (value: number, row: number, col: number) => {
@@ -781,7 +781,7 @@ describe("Lens.apply", () => {
                     get y() {
                         return this.#y;
                     }
-                    [LensNav] = {
+                    [TrhSymbols.LensNav] = {
                         x: { select: () => this.#x, apply: (v: number) => new (this.constructor as any)(v, this.#y) },
                         y: { select: () => this.#y, apply: (v: number) => new (this.constructor as any)(this.#x, v) },
                     };
@@ -806,7 +806,7 @@ describe("Lens.apply", () => {
                     getVal(key: string) {
                         return this.#data[key];
                     }
-                    [LensNav] = {
+                    [TrhSymbols.LensNav] = {
                         lookup: {
                             select: (key: string) => this.#data[key],
                             apply: (value: number, key: string) => {
@@ -923,7 +923,7 @@ describe("Lens.apply", () => {
                 getVal(key: string) {
                     return this.#data[key];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     lookup: {
                         select: (key: string) => this.#data[key],
                         apply: (value: number, key: string) => {
@@ -950,7 +950,7 @@ describe("Lens.apply", () => {
                 getCell(row: number, col: number) {
                     return this.#data[row][col];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     cell: {
                         select: (row: number, col: number) => this.#data[row][col],
                         apply: (value: number, row: number, col: number) => {
@@ -985,7 +985,7 @@ describe("Lens.apply", () => {
                 get val() {
                     return this.#val;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     value: { select: () => this.#val, apply: (v: number) => new Box(v) },
                 };
             }
@@ -1010,7 +1010,7 @@ describe("Lens.apply", () => {
                 getVal(key: string) {
                     return this.#data[key];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     lookup: {
                         select: (key: string) => this.#data[key],
                         apply: (value: number, key: string) => {
@@ -1123,7 +1123,7 @@ describe("Lens.apply", () => {
                 getValues() {
                     return [...this.#values];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
                 };
             }

@@ -1,4 +1,4 @@
-import { LensNavigable, LensNav } from "../src/types";
+import { TrhSymbols } from "@trh/symbols";
 import { DataLens, SelectorLens, MutatorLensOf, ApplierLensOf } from "../src/util/lens/types";
 
 // ------------------------------------------------------------
@@ -86,8 +86,8 @@ const nu_label: SelectorLens<string | undefined> = nu$("meta")("label");
 // Optional Field Support
 // ------------------------------------------------------------
 
-class Example implements LensNavigable {
-    [LensNav] = {
+class Example implements TrhSymbols.LensNavigable {
+    [TrhSymbols.LensNav] = {
         link: { access: (key: string) => "hi" as string, mutate: (value: string, key: string) => {} },
         node: { access: (key: string) => 0 as number, mutate: (value: number, key: string) => {} },
         has: { compute: (key: string) => false as boolean },
@@ -301,8 +301,8 @@ testMutate(optTestData, ($) => $("someExample").has("test"), true);
 testApply(optTestData, ($) => $("someExample").has("test"), true);
 
 // Multi-arg custom accessor type test
-class MultiArgExample implements LensNavigable {
-    [LensNav] = {
+class MultiArgExample implements TrhSymbols.LensNavigable {
+    [TrhSymbols.LensNav] = {
         cell: { access: (row: number, col: number) => 0 as number, mutate: (value: number, row: number, col: number) => {} },
         computed: { compute: (row: number, col: number) => "" as string },
     };

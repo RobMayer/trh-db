@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensNav, Contains, Containable } from "../../src/types";
+import { TrhSymbols } from "@trh/symbols";
 
 // --- Test fixtures ---
 
@@ -390,7 +390,7 @@ describe("Lens.get", () => {
             constructor(entries: Record<string, number>) {
                 this.#entries = entries;
             }
-            [LensNav] = {
+            [TrhSymbols.LensNav] = {
                 lookup: { select: (key: string) => this.#entries[key] ?? -1 },
             };
         }
@@ -406,7 +406,7 @@ describe("Lens.get", () => {
             constructor(data: Map<string, string>) {
                 this.#data = data;
             }
-            [LensNav] = {
+            [TrhSymbols.LensNav] = {
                 fetch: { select: (key: string) => this.#data.get(key) ?? null },
             };
         }
@@ -659,12 +659,12 @@ describe("Lens.get", () => {
     });
 
     describe("# operator with Containable", () => {
-        class TagBag implements Containable<string> {
+        class TagBag implements TrhSymbols.Containable<string> {
             items: string[];
             constructor(...items: string[]) {
                 this.items = items;
             }
-            [Contains] = (other: string) => this.items.includes(other);
+            [TrhSymbols.Contains] = (other: string) => this.items.includes(other);
         }
 
         it("filters by Containable membership", () => {
@@ -689,9 +689,9 @@ describe("Lens.get", () => {
 
         it("Containable takes priority over array fallback", () => {
             // An object that is array-like but also has Contains — Contains should win
-            class WeirdContainer implements Containable<number> {
+            class WeirdContainer implements TrhSymbols.Containable<number> {
                 // Contains always returns true regardless of input
-                [Contains] = (_other: number) => true;
+                [TrhSymbols.Contains] = (_other: number) => true;
             }
             const data = [{ val: new WeirdContainer() }, { val: [1, 2, 3] }];
             // WeirdContainer's Contains always returns true, so val with WeirdContainer matches
@@ -701,12 +701,12 @@ describe("Lens.get", () => {
         });
 
         it("Containable with numeric element type", () => {
-            class NumberSet implements Containable<number> {
+            class NumberSet implements TrhSymbols.Containable<number> {
                 private nums: Set<number>;
                 constructor(...nums: number[]) {
                     this.nums = new Set(nums);
                 }
-                [Contains] = (other: number) => this.nums.has(other);
+                [TrhSymbols.Contains] = (other: number) => this.nums.has(other);
             }
 
             const data = [
@@ -850,7 +850,7 @@ describe("Lens.get", () => {
                 constructor(entries: Record<string, number>) {
                     this.#entries = entries;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     lookup: { select: (key: string) => this.#entries[key] ?? -1 },
                 };
             }
@@ -865,7 +865,7 @@ describe("Lens.get", () => {
                 constructor(data: Record<string, number>) {
                     this.#data = data;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     lookup: { select: (key: string) => this.#data[key] ?? 0 },
                 };
             }
@@ -883,7 +883,7 @@ describe("Lens.get", () => {
                 constructor(data: number[][]) {
                     this.#data = data;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     cell: { select: (row: number, col: number) => this.#data[row][col] },
                 };
             }
@@ -903,7 +903,7 @@ describe("Lens.get", () => {
                 constructor(data: number[][]) {
                     this.#data = data;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     cell: { select: (row: number, col: number) => this.#data[row][col] },
                 };
             }
@@ -925,7 +925,7 @@ describe("Lens.get", () => {
                 constructor(count: number) {
                     this.#count = count;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     value: { select: () => this.#count },
                 };
             }
@@ -939,7 +939,7 @@ describe("Lens.get", () => {
                 constructor(inner: { label: string; count: number }) {
                     this.#inner = inner;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     item: { select: (key: string) => this.#inner },
                 };
             }
@@ -954,7 +954,7 @@ describe("Lens.get", () => {
                 constructor(values: number[]) {
                     this.#values = values;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     item: { select: (idx: number) => this.#values[idx] },
                     sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
                     avg: { select: () => this.#values.reduce((a, b) => a + b, 0) / this.#values.length },
@@ -972,7 +972,7 @@ describe("Lens.get", () => {
                 constructor(val: number) {
                     this.#val = val;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     value: { select: () => this.#val },
                 };
             }

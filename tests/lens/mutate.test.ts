@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Lens } from "../../src/util/lens";
-import { LensNav } from "../../src/types";
+import { TrhSymbols } from "@trh/symbols";
 
 // Path segment helpers for assertions
 const P = (key: string) => ({ type: "property" as const, key });
@@ -588,7 +588,7 @@ describe("Lens.mutate", () => {
             get y() {
                 return this.#y;
             }
-            [LensNav] = {
+            [TrhSymbols.LensNav] = {
                 x: {
                     select: () => this.#x,
                     mutate: (value: number) => {
@@ -629,7 +629,7 @@ describe("Lens.mutate", () => {
             getVal(key: string) {
                 return this.#data[key];
             }
-            [LensNav] = {
+            [TrhSymbols.LensNav] = {
                 lookup: {
                     select: (key: string) => this.#data[key],
                     mutate: (value: number, key: string) => {
@@ -656,7 +656,7 @@ describe("Lens.mutate", () => {
                 getCell(row: number, col: number) {
                     return this.#data[row][col];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     cell: {
                         select: (row: number, col: number) => this.#data[row][col],
                         mutate: (value: number, row: number, col: number) => {
@@ -875,7 +875,7 @@ describe("Lens.mutate", () => {
                     get y() {
                         return this.#y;
                     }
-                    [LensNav] = {
+                    [TrhSymbols.LensNav] = {
                         x: {
                             select: () => this.#x,
                             mutate: (v: number) => {
@@ -910,7 +910,7 @@ describe("Lens.mutate", () => {
                     getVal(key: string) {
                         return this.#data[key];
                     }
-                    [LensNav] = {
+                    [TrhSymbols.LensNav] = {
                         lookup: {
                             select: (key: string) => this.#data[key],
                             mutate: (value: number, key: string) => {
@@ -1029,7 +1029,7 @@ describe("Lens.mutate", () => {
                 getVal(key: string) {
                     return this.#data[key];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     lookup: {
                         select: (key: string) => this.#data[key],
                         mutate: (value: number, key: string) => {
@@ -1053,7 +1053,7 @@ describe("Lens.mutate", () => {
                 getCell(row: number, col: number) {
                     return this.#data[row][col];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     cell: {
                         select: (row: number, col: number) => this.#data[row][col],
                         mutate: (value: number, row: number, col: number) => {
@@ -1086,7 +1086,7 @@ describe("Lens.mutate", () => {
                 get val() {
                     return this.#val;
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     value: {
                         select: () => this.#val,
                         mutate: (v: number) => {
@@ -1115,7 +1115,7 @@ describe("Lens.mutate", () => {
                 getVal(key: string) {
                     return this.#data[key];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     lookup: {
                         select: (key: string) => this.#data[key],
                         mutate: (value: number, key: string) => {
@@ -1220,7 +1220,7 @@ describe("Lens.mutate", () => {
                 getValues() {
                     return [...this.#values];
                 }
-                [LensNav] = {
+                [TrhSymbols.LensNav] = {
                     sum: { select: () => this.#values.reduce((a, b) => a + b, 0) },
                 };
             }

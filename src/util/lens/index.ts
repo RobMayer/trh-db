@@ -1,11 +1,16 @@
 import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf, PathLens } from "./types";
-import { Compare, Contains, Equals, TypeOf, LensNav, DeepReadonly, LensPathSegment } from "../../types";
+import { DeepReadonly, LensPathSegment } from "../../types";
+import { sortCompare, evalPredicate as evalPredicateRaw } from "../predicate";
+import { TrhSymbols } from "@trh/symbols";
+
+const LENS = Symbol("lens");
+const PRED = Symbol("pred");
 
 //#region - Public API
 
 export namespace Lens {
-    export const get = <D, R>(data: D, lens: ($: SelectorLens<D>) => SelectorLensOf<R>): R => {
-        const proxy = createProxy({ value: data, isEach: false, path: [], filters: [] });
+    export const get = <D, R>(data: D, lens: ($: SelectorLens<D>) => SelectorLensOf<R>, meta?: { [key: string]: unknown }): R => {
+        const proxy = createProxy({ value: data, isEach: false, path: [], filters: [], meta });
         const result = lens(proxy);
         return (result as any)[LENS].value;
     };
@@ -45,14 +50,46 @@ export namespace Lens {
             }
         });
     };
+
+    /** Test whether data matches a predicate callback. Meta keys become virtual properties on `$`. */
+    export const match = (data: unknown, predFn: Function, meta?: { [key: string]: unknown }): boolean => {
+        const proxy = createProxy({ value: data, isEach: false, path: [], filters: [], meta });
+        return evalPredicate(predFn(proxy));
+    };
+
+    /** Probe a predicate callback to extract its structure (path, operator, operand). Returns null for non-indexable predicates. */
+    export const probe = (predFn: Function): { path: LensPathSegment[]; operator: string; operand: unknown; operand2?: unknown } | null => {
+        const probeProxy = createProxy({ value: undefined, isEach: false, path: [], filters: [] });
+        const pred = predFn(probeProxy);
+
+        // Must be a plain predicate tuple (not a PredicateResult from or/and/not/xor)
+        if (!Array.isArray(pred)) return null;
+        if (pred.length < 3) return null; // Unary — can't index
+
+        const subject = pred[0];
+        const subjectState = subject?.[LENS] as LensState | undefined;
+        if (!subjectState || subjectState.path.length === 0) return null;
+
+        // Convert internal path steps to public LensPathSegments
+        const probedPath: LensPathSegment[] = [];
+        for (const step of subjectState.path) {
+            if (step.type === "prop") probedPath.push(seg.fromPropStep(step.key));
+            else if (step.type === "custom") probedPath.push(seg.acc(step.prop, ...step.args.map(String)));
+            else return null; // Can't represent complex paths
+        }
+
+        const operator = pred[1] as string;
+        const operand = unwrapDeep(pred[2]);
+        if (pred.length === 4) {
+            return { path: probedPath, operator, operand, operand2: unwrapDeep(pred[3]) };
+        }
+        return { path: probedPath, operator, operand };
+    };
 }
 
 //#endregion
 
-//#region - Symbols
-
-const LENS = Symbol("lens");
-const PRED = Symbol("pred");
+//#region - Internal types
 
 type FilterOp = { type: "where"; predFn: Function } | { type: "filter"; fn: Function } | { type: "slice"; start: number; end?: number } | { type: "sort"; args: any[] };
 
@@ -63,114 +100,11 @@ type PathStep =
     | { type: "mapGet"; key: unknown }
     | { type: "custom"; prop: string; args: unknown[] };
 
-type LensState = { value: unknown; isEach: boolean; path: PathStep[]; filters: FilterOp[] };
+type LensState = { value: unknown; isEach: boolean; path: PathStep[]; filters: FilterOp[]; meta?: { [key: string]: unknown } };
 
 //#endregion
 
 //#region - Shared helpers
-
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-
-function compare(a: unknown, b: unknown): number | null {
-    // 1. Left-side Compare symbol
-    if (a != null && typeof a === "object" && Compare in a) {
-        const result = (a as any)[Compare](b);
-        if (result !== null && !isNaN(result)) return result;
-    }
-    // 2. Right-side Compare symbol (flipped sign)
-    if (b != null && typeof b === "object" && Compare in b) {
-        const result = (b as any)[Compare](a);
-        if (result !== null && !isNaN(result)) return -result;
-    }
-    // 3. Numeric comparison
-    if (typeof a === "number" && typeof b === "number") return a - b;
-    if (typeof a === "bigint" && typeof b === "bigint") return Number(a - b);
-    // 4. String comparison with natural collation
-    if (typeof a === "string" && typeof b === "string") return collator.compare(a, b);
-    // 5. Incomparable types
-    return null;
-}
-
-function performEquality(a: unknown, b: unknown): boolean {
-    // 1. Left-side Equals symbol
-    if (a != null && typeof a === "object" && Equals in a) {
-        const result = (a as any)[Equals](b);
-        if (result !== null) return result;
-    }
-    // 2. Right-side Equals symbol
-    if (b != null && typeof b === "object" && Equals in b) {
-        const result = (b as any)[Equals](a);
-        if (result !== null) return result;
-    }
-    // 3. Strict equality fallback
-    return a === b;
-}
-
-function resolveTypeOf(value: unknown): string {
-    if (value === null) return "nullish/null";
-    if (value === undefined) return "nullish/undefined";
-    switch (typeof value) {
-        case "number":
-            return "number/native";
-        case "bigint":
-            return "number/bigint";
-        case "boolean":
-            return "boolean";
-        case "string":
-            return "string";
-        case "symbol":
-            return "symbol";
-        case "function":
-            return "function";
-    }
-    // Check custom TypeOf symbol first
-    if (typeof (value as any)[TypeOf] === "function") {
-        const custom = (value as any)[TypeOf]();
-        if (typeof custom === "string") return custom;
-    }
-    if (Array.isArray(value)) return "array";
-    if (value instanceof Date) return "date";
-    if (value instanceof Set) return "set";
-    if (value instanceof Map) return "map";
-    if (value instanceof RegExp) return "regexp";
-    if (value instanceof Promise) return "promise";
-    if (value instanceof Error) return "error";
-    const tag = (value as any)[Symbol.toStringTag];
-    if (typeof tag === "string") return tag.toLowerCase();
-    return "object";
-}
-
-function convertToString(value: unknown): string | null {
-    if (value === null || value === undefined) return null;
-    switch (typeof value) {
-        case "string":
-            return value;
-        case "number":
-        case "bigint":
-            return value.toString();
-        case "boolean":
-            return null;
-    }
-    if (Array.isArray(value)) return null;
-    if (typeof (value as any).toString === "function" && (value as any).toString !== Object.prototype.toString) {
-        return (value as any).toString();
-    }
-    return null;
-}
-
-export function sortCompare(a: unknown, b: unknown): number {
-    // 1. Compare symbol / native types
-    const cmp = compare(a, b);
-    if (cmp !== null) return cmp;
-
-    // 2. Numeric coercion
-    const numA = Number(a);
-    const numB = Number(b);
-    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-
-    // 3. String fallback
-    return collator.compare(String(a), String(b));
-}
 
 /** If arg is a LENS proxy, extract its value. Otherwise return as-is. */
 const unwrap = (arg: unknown): unknown => {
@@ -178,147 +112,20 @@ const unwrap = (arg: unknown): unknown => {
     return lens ? lens.value : arg;
 };
 
-//#endregion
+/** Deep-unwrap: extract LENS proxy values, recursing into arrays (for any-of/all-of operands). */
+function unwrapDeep(v: unknown): unknown {
+    const state = (v as any)?.[LENS] as LensState | undefined;
+    if (state !== undefined) return state.value;
+    if (Array.isArray(v)) return v.map(unwrapDeep);
+    return v;
+}
 
-//#region - Operator table
-
-const OPS: Record<string, (subject: any, operand: any, operand2?: any) => boolean> = {
-    "=": (s, o) => performEquality(s, o),
-    "==": (s, o) => s == o,
-    ">": (s, o) => {
-        const c = compare(s, o);
-        return c !== null && c > 0;
-    },
-    "<": (s, o) => {
-        const c = compare(s, o);
-        return c !== null && c < 0;
-    },
-    ">=": (s, o) => {
-        const c = compare(s, o);
-        return c !== null && c >= 0;
-    },
-    "<=": (s, o) => {
-        const c = compare(s, o);
-        return c !== null && c <= 0;
-    },
-    "%": (s, o) => {
-        const a = convertToString(s),
-            b = convertToString(o);
-        return a !== null && b !== null && a.includes(b);
-    },
-    "%^": (s, o) => {
-        const a = convertToString(s),
-            b = convertToString(o);
-        return a !== null && b !== null && a.toLowerCase().includes(b.toLowerCase());
-    },
-    "%_": (s, o) => {
-        const a = convertToString(s),
-            b = convertToString(o);
-        return a !== null && b !== null && a.startsWith(b);
-    },
-    "%^_": (s, o) => {
-        const a = convertToString(s),
-            b = convertToString(o);
-        return a !== null && b !== null && a.toLowerCase().startsWith(b.toLowerCase());
-    },
-    "_%": (s, o) => {
-        const a = convertToString(s),
-            b = convertToString(o);
-        return a !== null && b !== null && a.endsWith(b);
-    },
-    "_%^": (s, o) => {
-        const a = convertToString(s),
-            b = convertToString(o);
-        return a !== null && b !== null && a.toLowerCase().endsWith(b.toLowerCase());
-    },
-    "~": (s, o) => {
-        const str = convertToString(s);
-        if (str === null) return false;
-        try {
-            return (o instanceof RegExp ? o : new RegExp(o)).test(str);
-        } catch {
-            return false;
-        }
-    },
-    "#": (s, o) => (s != null && typeof s === "object" && Contains in s ? (s as any)[Contains](o) : Array.isArray(s) ? s.includes(o) : s instanceof Set ? s.has(o) : false),
-    ":": (s, o) => resolveTypeOf(s).startsWith(String(o)),
-    "><": (s, lo, hi) => {
-        const ord = compare(lo, hi);
-        if (ord === null) return false;
-        const [l, h] = ord <= 0 ? [lo, hi] : [hi, lo];
-        const cL = compare(s, l);
-        const cH = compare(s, h);
-        return cL !== null && cH !== null && cL > 0 && cH < 0;
-    },
-    ">=<": (s, lo, hi) => {
-        const ord = compare(lo, hi);
-        if (ord === null) return false;
-        const [l, h] = ord <= 0 ? [lo, hi] : [hi, lo];
-        const cL = compare(s, l);
-        const cH = compare(s, h);
-        return cL !== null && cH !== null && cL >= 0 && cH <= 0;
-    },
-};
-
-//#endregion
-
-//#region - Predicate evaluation
-
+/** Internal predicate evaluator: handles PRED symbol + proxy unwrapping, delegates to pure evalPredicate. */
 function evalPredicate(pred: any): boolean {
     // PredicateResult pass-through
     if (pred != null && typeof pred === "object" && PRED in pred) return (pred as any)[PRED];
-
-    const tuple = pred as unknown[];
-
-    const unwrap = (v: unknown): unknown => {
-        const state = (v as any)?.[LENS] as LensState | undefined;
-        return state !== undefined ? state.value : v;
-    };
-
-    // Arity 2 — unary
-    if (tuple.length === 2) {
-        const val = unwrap(tuple[0]);
-        return tuple[1] === "?" ? !!val : !val;
-    }
-
-    const subject = unwrap(tuple[0]);
-    const rawOp = tuple[1] as string;
-
-    // Parse operator: !prefix, |/& suffix
-    let negate = false;
-    let mode: "single" | "any" | "all" = "single";
-    let base = rawOp;
-
-    if (base.startsWith("!")) {
-        negate = true;
-        base = base.slice(1);
-    }
-    if (base.endsWith("|")) {
-        mode = "any";
-        base = base.slice(0, -1);
-    } else if (base.endsWith("&")) {
-        mode = "all";
-        base = base.slice(0, -1);
-    }
-
-    const op = OPS[base];
-    if (!op) return false;
-
-    let result: boolean;
-
-    if (tuple.length === 4) {
-        // Range op — two operands
-        result = op(subject, unwrap(tuple[2]), unwrap(tuple[3]));
-    } else if (mode === "single") {
-        result = op(subject, unwrap(tuple[2]));
-    } else {
-        // any-of or all-of — operand is an array
-        const operands = tuple[2] as unknown[];
-        const method = mode === "any" ? "some" : "every";
-        result = operands[method]((o: unknown) => op(subject, unwrap(o)));
-    }
-
-    return negate ? !result : result;
+    const tuple = (pred as unknown[]).map(unwrapDeep);
+    return evalPredicateRaw(tuple);
 }
 
 //#endregion
@@ -356,6 +163,11 @@ function createProxy(state: LensState): any {
             // Internal state extraction
             if (prop === LENS) return state;
 
+            // Meta injection ($.ID, $.DEPTH, etc.)
+            if (typeof prop === "string" && state.meta && prop in state.meta) {
+                return createProxy({ value: state.meta[prop], isEach: false, path: [], filters: [] });
+            }
+
             switch (prop) {
                 //#region - Universal
                 case "transform":
@@ -392,12 +204,14 @@ function createProxy(state: LensState): any {
                         const filters = foldFilters();
                         if (callback) {
                             const arr = isEach ? (value as any[]).flat(1) : (value as any[]);
-                            const mapped = (arr ?? []).map((item: any) => {
-                                const elProxy = createProxy({ value: item, isEach: false, path: [], filters: [] });
-                                const result = callback(elProxy);
-                                const inner = (result as any)[LENS];
-                                return inner.isEach ? inner.value : [inner.value];
-                            }).flat(1);
+                            const mapped = (arr ?? [])
+                                .map((item: any) => {
+                                    const elProxy = createProxy({ value: item, isEach: false, path: [], filters: [] });
+                                    const result = callback(elProxy);
+                                    const inner = (result as any)[LENS];
+                                    return inner.isEach ? inner.value : [inner.value];
+                                })
+                                .flat(1);
                             return createProxy({
                                 value: mapped,
                                 isEach: true,
@@ -437,9 +251,15 @@ function createProxy(state: LensState): any {
 
                 //#region - Map / Set
                 case "get":
-                    return (rawKey: any) => { const key = unwrap(rawKey); return nav((v: any) => v?.get?.(key), { type: "mapGet", key }); };
+                    return (rawKey: any) => {
+                        const key = unwrap(rawKey);
+                        return nav((v: any) => v?.get?.(key), { type: "mapGet", key });
+                    };
                 case "has":
-                    return (rawVal: any) => { const val = unwrap(rawVal); return apply((v: any) => v?.has?.(val) ?? false); };
+                    return (rawVal: any) => {
+                        const val = unwrap(rawVal);
+                        return apply((v: any) => v?.has?.(val) ?? false);
+                    };
                 //#endregion
 
                 //#region - Filtering (accumulate in state.filters, don't record path steps)
@@ -499,7 +319,7 @@ function createProxy(state: LensState): any {
                 case "slice":
                     return (rawStart: number, rawEnd?: number) => {
                         const start = unwrap(rawStart) as number;
-                        const end = rawEnd !== undefined ? unwrap(rawEnd) as number : undefined;
+                        const end = rawEnd !== undefined ? (unwrap(rawEnd) as number) : undefined;
                         const nextFilters = [...filters, { type: "slice" as const, start, end }];
                         if (isEach) return createProxy({ value: (value as any[]).map((v: any[]) => v.slice(start, end)), isEach: true, path, filters: nextFilters });
                         return createProxy({ value: (value as any[]).slice(start, end), isEach: false, path, filters: nextFilters });
@@ -522,10 +342,8 @@ function createProxy(state: LensState): any {
             if (typeof prop === "string") {
                 // Custom accessors (LensNav — object protocol)
                 const customDispatch = (v: any): ((...args: any[]) => unknown) | undefined => {
-                    const accessor = v?.[LensNav]?.[prop];
-                    return accessor && typeof accessor.select === "function"
-                        ? (...args: any[]) => accessor.select(...args)
-                        : undefined;
+                    const accessor = v?.[TrhSymbols.LensNav]?.[prop];
+                    return accessor && typeof accessor.select === "function" ? (...args: any[]) => accessor.select(...args) : undefined;
                 };
 
                 if (isEach) {
@@ -533,7 +351,12 @@ function createProxy(state: LensState): any {
                     if (hasAny)
                         return (...rawArgs: any[]) => {
                             const args = rawArgs.map(unwrap);
-                            return createProxy({ value: (value as any[]).map((v) => customDispatch(v)?.(...args)), isEach: true, path: [...path, { type: "custom" as const, prop, args }], filters: [] });
+                            return createProxy({
+                                value: (value as any[]).map((v) => customDispatch(v)?.(...args)),
+                                isEach: true,
+                                path: [...path, { type: "custom" as const, prop, args }],
+                                filters: [],
+                            });
                         };
                 } else {
                     const fn = customDispatch(value);
@@ -686,7 +509,7 @@ function doApply(current: any, steps: PathStep[], idx: number, updater: (prev: a
             return map;
         }
         case "custom": {
-            const accessor = current?.[LensNav]?.[step.prop];
+            const accessor = current?.[TrhSymbols.LensNav]?.[step.prop];
             if (accessor?.select) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, ...step.args.map(String))] };
                 const readValue = accessor.select(...step.args);
@@ -767,7 +590,7 @@ function doMutate(current: any, steps: PathStep[], idx: number, updater: (prev: 
             break;
         }
         case "custom": {
-            const accessor = current?.[LensNav]?.[step.prop];
+            const accessor = current?.[TrhSymbols.LensNav]?.[step.prop];
             if (accessor?.select) {
                 const childCtx = { ...ctx, path: [...ctx.path, seg.acc(step.prop, ...step.args.map(String))] };
                 const readValue = accessor.select(...step.args);

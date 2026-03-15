@@ -358,3 +358,285 @@ describe("codec notifications", () => {
         expect(deleteCalled).toBe(false);
     });
 });
+
+// ============================================================
+// Pipeline — chain starters
+// ============================================================
+
+async function seededDB() {
+    const db = makeDB();
+    await db.insert({
+        a: { name: "Alice", age: 30 },
+        b: { name: "Bob", age: 25 },
+        c: { name: "Charlie", age: 35 },
+        d: { name: "Diana", age: 28 },
+    });
+    return db;
+}
+
+describe("pipeline: select", () => {
+    it("selects a single record", async () => {
+        const db = await seededDB();
+        const result = await db.select("a").get();
+        expect(result).toEqual({ id: "a", data: { name: "Alice", age: 30 } });
+    });
+
+    it("returns undefined for missing single select", async () => {
+        const db = await seededDB();
+        const result = await db.select("missing").get();
+        expect(result).toBeUndefined();
+    });
+
+    it("selects multiple records", async () => {
+        const db = await seededDB();
+        const result = await db.select(["a", "c"]).get();
+        expect(result).toHaveLength(2);
+        expect((result as any[]).map((r: any) => r.id)).toEqual(expect.arrayContaining(["a", "c"]));
+    });
+});
+
+describe("pipeline: all", () => {
+    it("returns all records", async () => {
+        const db = await seededDB();
+        const result = await db.all().get();
+        expect(result).toHaveLength(4);
+    });
+});
+
+// ============================================================
+// Pipeline — where
+// ============================================================
+
+describe("pipeline: where", () => {
+    it("filters by equality", async () => {
+        const db = await seededDB();
+        const result = await db.where(($) => [$("name"), "=", "Alice"]).get();
+        expect(result).toHaveLength(1);
+        expect((result as any[])[0].data.name).toBe("Alice");
+    });
+
+    it("filters by comparison", async () => {
+        const db = await seededDB();
+        const result = await db.where(($) => [$("age"), ">", 28]).get();
+        expect(result).toHaveLength(2); // Alice(30), Charlie(35)
+    });
+
+    it("chains multiple where clauses", async () => {
+        const db = await seededDB();
+        const result = await db
+            .where(($) => [$("age"), ">", 25])
+            .where(($) => [$("age"), "<", 35])
+            .get();
+        expect(result).toHaveLength(2); // Alice(30), Diana(28)
+    });
+
+    it("filters by $.ID meta accessor", async () => {
+        const db = await seededDB();
+        const result = await db.where(($) => [$.ID, "=", "b"]).get();
+        expect(result).toHaveLength(1);
+        expect((result as any[])[0].data.name).toBe("Bob");
+    });
+
+    it("supports unary truthiness operator", async () => {
+        const db = await seededDB();
+        const result = await db.where(($) => [$("name"), "?"]).get();
+        expect(result).toHaveLength(4); // all names are truthy
+    });
+
+    it("uses index acceleration for equality", async () => {
+        const db = await seededDB();
+        db.addIndex(($) => $("name"));
+        const result = await db.where(($) => [$("name"), "=", "Bob"]).get();
+        expect(result).toHaveLength(1);
+        expect((result as any[])[0].id).toBe("b");
+    });
+
+    it("uses index acceleration for range", async () => {
+        const db = await seededDB();
+        db.addIndex(($) => $("age"));
+        const result = await db.where(($) => [$("age"), ">", 28]).get();
+        expect(result).toHaveLength(2); // Alice(30), Charlie(35)
+    });
+});
+
+// ============================================================
+// Pipeline — sort, slice, paginate, window
+// ============================================================
+
+describe("pipeline: sort", () => {
+    it("sorts ascending", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "asc").get();
+        const ages = (result as any[]).map((r: any) => r.data.age);
+        expect(ages).toEqual([25, 28, 30, 35]);
+    });
+
+    it("sorts descending", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "desc").get();
+        const ages = (result as any[]).map((r: any) => r.data.age);
+        expect(ages).toEqual([35, 30, 28, 25]);
+    });
+
+    it("sorts by string field", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("name"), "asc").get();
+        const names = (result as any[]).map((r: any) => r.data.name);
+        expect(names).toEqual(["Alice", "Bob", "Charlie", "Diana"]);
+    });
+
+    it("sorts by $.ID", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $.ID, "desc").get();
+        const ids = (result as any[]).map((r: any) => r.id);
+        expect(ids).toEqual(["d", "c", "b", "a"]);
+    });
+});
+
+describe("pipeline: slice / paginate / window", () => {
+    it("slices results", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "asc").slice(1, 3).get();
+        expect(result).toHaveLength(2);
+        expect((result as any[])[0].data.age).toBe(28);
+        expect((result as any[])[1].data.age).toBe(30);
+    });
+
+    it("paginates results", async () => {
+        const db = await seededDB();
+        const page1 = await db.all().sort(($) => $("age"), "asc").paginate(1, 2).get();
+        const page2 = await db.all().sort(($) => $("age"), "asc").paginate(2, 2).get();
+        expect(page1).toHaveLength(2);
+        expect(page2).toHaveLength(2);
+        expect((page1 as any[])[0].data.age).toBe(25);
+        expect((page2 as any[])[0].data.age).toBe(30);
+    });
+
+    it("windows results", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "asc").window(1, 2).get();
+        expect(result).toHaveLength(2);
+        expect((result as any[])[0].data.age).toBe(28);
+    });
+});
+
+// ============================================================
+// Pipeline — cardinality reducers
+// ============================================================
+
+describe("pipeline: first / last / at", () => {
+    it("first returns first item", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "asc").first().get();
+        expect((result as any).data.age).toBe(25);
+    });
+
+    it("last returns last item", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "asc").last().get();
+        expect((result as any).data.age).toBe(35);
+    });
+
+    it("at returns item at index", async () => {
+        const db = await seededDB();
+        const result = await db.all().sort(($) => $("age"), "asc").at(2).get();
+        expect((result as any).data.age).toBe(30);
+    });
+
+    it("first on empty returns undefined", async () => {
+        const db = await seededDB();
+        const result = await db.where(($) => [$("age"), ">", 100]).first().get();
+        expect(result).toBeUndefined();
+    });
+});
+
+// ============================================================
+// Pipeline — read terminals
+// ============================================================
+
+describe("pipeline: count / exists / id", () => {
+    it("count returns number of matches", async () => {
+        const db = await seededDB();
+        expect(await db.all().count()).toBe(4);
+        expect(await db.where(($) => [$("age"), ">", 28]).count()).toBe(2);
+    });
+
+    it("exists returns true/false", async () => {
+        const db = await seededDB();
+        expect(await db.select("a").exists()).toBe(true);
+        expect(await db.select("missing").exists()).toBe(false);
+        expect(await db.where(($) => [$("age"), ">", 100]).exists()).toBe(false);
+    });
+
+    it("id returns id(s)", async () => {
+        const db = await seededDB();
+        const singleId = await db.select("a").id();
+        expect(singleId).toBe("a");
+
+        const multiIds = await db.all().sort(($) => $("name"), "asc").id();
+        expect(multiIds).toEqual(["a", "b", "c", "d"]);
+    });
+
+    it("id returns undefined for missing single select", async () => {
+        const db = await seededDB();
+        const result = await db.select("missing").id();
+        expect(result).toBeUndefined();
+    });
+});
+
+// ============================================================
+// Pipeline — write terminals
+// ============================================================
+
+describe("pipeline: update terminal", () => {
+    it("updates matched records with static value", async () => {
+        const db = await seededDB();
+        await db.where(($) => [$("name"), "=", "Alice"]).update({ name: "Alice Updated", age: 99 });
+        expect(db.get("a")?.data.name).toBe("Alice Updated");
+        expect(db.get("a")?.data.age).toBe(99);
+    });
+
+    it("updates matched records with updater function", async () => {
+        const db = await seededDB();
+        await db.where(($) => [$("age"), ">", 28]).update((prev) => ({ ...prev, age: prev.age + 100 }));
+        expect(db.get("a")?.data.age).toBe(130); // 30 + 100
+        expect(db.get("c")?.data.age).toBe(135); // 35 + 100
+        expect(db.get("b")?.data.age).toBe(25);  // unchanged
+    });
+
+    it("updates single select with updater", async () => {
+        const db = await seededDB();
+        await db.select("b").update((prev) => ({ ...prev, age: 0 }));
+        expect(db.get("b")?.data.age).toBe(0);
+    });
+});
+
+describe("pipeline: remove terminal", () => {
+    it("removes matched records", async () => {
+        const db = await seededDB();
+        await db.where(($) => [$("age"), "<", 29]).remove();
+        expect(db.get("b")).toBeUndefined(); // age 25
+        expect(db.get("d")).toBeUndefined(); // age 28
+        expect(db.get("a")).toBeDefined();   // age 30
+        expect(db.get("c")).toBeDefined();   // age 35
+    });
+
+    it("removes single select", async () => {
+        const db = await seededDB();
+        await db.select("a").remove();
+        expect(db.get("a")).toBeUndefined();
+        expect(await db.all().count()).toBe(3);
+    });
+});
+
+// ============================================================
+// Pipeline — distinct
+// ============================================================
+
+describe("pipeline: distinct", () => {
+    it("deduplicates by id", async () => {
+        const db = await seededDB();
+        const result = await db.all().distinct().get();
+        expect(result).toHaveLength(4);
+    });
+});
