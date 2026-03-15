@@ -40,7 +40,9 @@ coverage/
 !README.md
 !Readme.md
 !todo.md
-!.github/
+
 
 # No . directories
 .*/
+
+!.github/
