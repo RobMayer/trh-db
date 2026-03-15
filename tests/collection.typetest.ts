@@ -82,9 +82,9 @@ const lensUpdateFn: Promise<CollectionMemberOf<User> | undefined> = db.select("a
 // Direct Methods
 // ------------------------------------------------------------
 
-const getOne: Promise<CollectionMemberOf<User> | undefined> = db.get("abc");
-const getMany: Promise<CollectionMemberOf<User>[]> = db.get(["a", "b"]);
-const insertOne: Promise<CollectionMemberOf<User>> = db.insert("abc", { name: "Alice", age: 30, active: true });
-const insertMany: Promise<CollectionMemberOf<User>[]> = db.insert({ abc: { name: "Alice", age: 30, active: true } });
-const removeOne: Promise<CollectionMemberOf<User> | undefined> = db.remove("abc");
-const removeMany: Promise<CollectionMemberOf<User>[]> = db.remove(["a", "b"]);
+const getOne: CollectionMemberOf<User> | undefined = db.get("abc");
+const getMany: CollectionMemberOf<User>[] = db.get(["a", "b"]);
+const insertOne: Promise<void> = db.insert("abc", { name: "Alice", age: 30, active: true });
+const insertMany: Promise<void> = db.insert({ abc: { name: "Alice", age: 30, active: true } });
+const removeOne: Promise<void> = db.remove("abc");
+const removeMany: Promise<void> = db.remove(["a", "b"]);

@@ -1,4 +1,4 @@
-import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf } from "./types";
+import { SelectorLens, SelectorLensOf, MutatorLens, MutatorLensOf, ApplierLens, ApplierLensOf, PathLens } from "./types";
 import { Compare, Contains, Equals, TypeOf, LensNav, DeepReadonly, LensPathSegment } from "../../types";
 
 //#region - Public API
@@ -28,6 +28,22 @@ export namespace Lens {
         const updater = typeof value === "function" ? (value as (prev: R, index: number, context: Lens.Context) => R) : () => value;
         if (path.length === 0) return updater(data as any, 0, { path: [], index: 0, count: 1 }) as any;
         return doApply(data, path, 0, updater as any, { path: [], index: 0, count: 1 });
+    };
+
+    export const path = <D>(lens: ($: PathLens<D>) => PathLens<any>): LensPathSegment[] => {
+        const proxy = createProxy({ value: undefined, isEach: false, path: [], filters: [] });
+        const result = lens(proxy as any);
+        const steps = ((result as any)[LENS] as LensState).path;
+        return steps.map((step) => {
+            switch (step.type) {
+                case "prop":
+                    return seg.fromPropStep(step.key);
+                case "custom":
+                    return seg.acc(step.prop, ...step.args.map(String));
+                default:
+                    throw new Error(`Unexpected step type in PathLens: ${step.type}`);
+            }
+        });
     };
 }
 
