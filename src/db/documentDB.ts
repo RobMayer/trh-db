@@ -14,20 +14,32 @@ type DocumentItemMeta = {
     id: string;
 };
 
-export class DocumentDB<D> {
+export class DocumentDB<D, M = null> {
     private data: DocumentsOf<D> = {};
-    private codec: Codec<DocumentOf<D>>;
+    private meta: M | null = null;
+    private codec: Codec<DocumentOf<D>, M>;
     private indices = new IndexStore();
     private indexLenses: { [serializedKey: string]: Function } = {};
 
-    constructor(codec: Codec<DocumentOf<D>>) {
+    constructor(codec: Codec<DocumentOf<D>, M>) {
         this.codec = codec;
+        this.meta = null;
     }
 
     async load() {
         const [data, meta] = await this.codec.load();
         this.data = data;
+        this.meta = meta;
         return meta;
+    }
+
+    getMeta() {
+        return this.meta;
+    }
+
+    async setMeta(value: M) {
+        this.meta = value;
+        await this.codec.setMeta(value, this.data);
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -83,7 +95,7 @@ export class DocumentDB<D> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.data, null);
+        if (items.length > 0) await this.codec.update(items, this.data, this.meta);
     }
 
     async insert(id: DocumentId, data: D): Promise<void>;
@@ -105,7 +117,7 @@ export class DocumentDB<D> {
             }
         }
 
-        await this.codec.insert(items, this.data, null);
+        await this.codec.insert(items, this.data, this.meta);
     }
 
     async remove(target: DocumentId): Promise<void>;
@@ -131,7 +143,7 @@ export class DocumentDB<D> {
             }
         }
 
-        if (items.length > 0) await this.codec.delete(items, this.data, null);
+        if (items.length > 0) await this.codec.delete(items, this.data, this.meta);
     }
 
     // --- Index management ---
@@ -238,7 +250,7 @@ function tryIndexAccelerate<D>(predFn: Function, db: DocumentDB<D>): Set<string>
     return indexOp(indices, pathKey, operand) as Set<string>;
 }
 
-function createPipeline<D>(db: DocumentDB<D>, seed: PipelineSeed): any {
+function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
     const ops: PipelineOp[] = [];
     const data = (db as any).data as DocumentsOf<D>;
 
