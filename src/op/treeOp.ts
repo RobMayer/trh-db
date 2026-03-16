@@ -1,6 +1,6 @@
 import { TreeItemOf, TreeOf } from "../types";
 
-// maybe temporary?
+// DO NOT USE IN PRODUCTION. THIS WILL BE REMOVED!
 
 export namespace TreeOp {
     //#region query
