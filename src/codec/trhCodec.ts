@@ -72,6 +72,11 @@ export class TrhCodec<D extends { id: string; data: any }, M = null> implements 
             (t) => new Map(t),
             (v) => (v instanceof Map ? [...v] : undefined),
         );
+        this.register<URL, string>(
+            "core.url",
+            (t) => new URL(t),
+            (v) => (v instanceof URL ? v.toString() : undefined),
+        );
     }
 
     register = <S, T = string>(sigil: string, parser: (token: T) => S, serializer: (value: S) => T | undefined) => {
@@ -167,9 +172,16 @@ export class TrhCodec<D extends { id: string; data: any }, M = null> implements 
     }
 
     async struct(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
-        await appendFile(this.#file, SEP_ENTRY + items.map((item) => {
-            const { id: _, data: __, ...structural } = item as any;
-            return [OP_STRUCT, item.id, JSON.stringify(structural, this.#replacer)].join(SEP_OPERATION);
-        }).join(SEP_ENTRY), "utf-8");
+        await appendFile(
+            this.#file,
+            SEP_ENTRY +
+                items
+                    .map((item) => {
+                        const { id: _, data: __, ...structural } = item as any;
+                        return [OP_STRUCT, item.id, JSON.stringify(structural, this.#replacer)].join(SEP_OPERATION);
+                    })
+                    .join(SEP_ENTRY),
+            "utf-8",
+        );
     }
 }
