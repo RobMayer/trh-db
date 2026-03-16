@@ -1,6 +1,4 @@
-import { SelectorLens } from "../src/util/lens/types";
-import { Predicate } from "../src/util/predicate";
-import { LogicalOps, PredicateResult } from "../src/util/logic";
+import { SelectorLens, Predicate, LogicalOps, PredicateResult } from "../src/util/lens";
 
 // ------------------------------------------------------------
 // Test Data & Infrastructure

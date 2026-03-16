@@ -1,26 +1,26 @@
-import { Codec, CollectionId, CollectionMemberOf, CollectionOf, ListOf, Updater } from "../types";
+import { Codec, ListOf, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
-import { Lens } from "../util/lens";
-import { sortCompare } from "../util/predicate";
-import { DataLens, SelectorLens, PathLens } from "../util/lens/types";
-import { LogicalOps, PredicateResult } from "../util/logic";
-import { Predicate } from "../util/predicate";
+import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf } from "../util/lens";
 
 // ------------------------------------------------------------
-// CollectionDB<D>
+// DocumentDB<D>
 // ------------------------------------------------------------
 
-type CollectionItemMeta = {
+export type DocumentId = string;
+export type DocumentsOf<D> = { [id: DocumentId]: DocumentOf<D> };
+export type DocumentOf<D> = { id: DocumentId; data: D };
+
+type DocumentItemMeta = {
     id: string;
 };
 
-export class CollectionDB<D> {
-    private data: CollectionOf<D> = {};
-    private codec: Codec<CollectionMemberOf<D>>;
+export class DocumentDB<D> {
+    private data: DocumentsOf<D> = {};
+    private codec: Codec<DocumentOf<D>>;
     private indices = new IndexStore();
     private indexLenses: { [serializedKey: string]: Function } = {};
 
-    constructor(codec: Codec<CollectionMemberOf<D>>) {
+    constructor(codec: Codec<DocumentOf<D>>) {
         this.codec = codec;
     }
 
@@ -30,14 +30,14 @@ export class CollectionDB<D> {
 
     // --- Direct methods (bypass pipeline) ---
 
-    get(target: CollectionId): CollectionMemberOf<D> | undefined;
-    get(target: ListOf<CollectionId>): CollectionMemberOf<D>[];
-    get(target: CollectionId | ListOf<CollectionId>): CollectionMemberOf<D> | undefined | CollectionMemberOf<D>[] {
+    get(target: DocumentId): DocumentOf<D> | undefined;
+    get(target: ListOf<DocumentId>): DocumentOf<D>[];
+    get(target: DocumentId | ListOf<DocumentId>): DocumentOf<D> | undefined | DocumentOf<D>[] {
         if (typeof target === "string") {
             return this.data[target];
         }
         const ids = target instanceof Set ? target : target;
-        const results: CollectionMemberOf<D>[] = [];
+        const results: DocumentOf<D>[] = [];
         for (const id of ids) {
             const item = this.data[id];
             if (item) results.push(item);
@@ -45,11 +45,11 @@ export class CollectionDB<D> {
         return results;
     }
 
-    async update(id: CollectionId, data: D | ((prev: D, meta: Item<D>) => D)): Promise<void>;
-    async update(payload: { [key: CollectionId]: D }): Promise<void>;
-    async update(ids: ListOf<CollectionId>, updater: (prev: D, meta: Item<D>) => D): Promise<void>;
-    async update(idOrPayload: CollectionId | { [key: CollectionId]: D } | ListOf<CollectionId>, dataOrUpdater?: D | ((prev: D, meta: Item<D>) => D)): Promise<void> {
-        const items: CollectionMemberOf<D>[] = [];
+    async update(id: DocumentId, data: D | ((prev: D, meta: Item<D>) => D)): Promise<void>;
+    async update(payload: { [key: DocumentId]: D }): Promise<void>;
+    async update(ids: ListOf<DocumentId>, updater: (prev: D, meta: Item<D>) => D): Promise<void>;
+    async update(idOrPayload: DocumentId | { [key: DocumentId]: D } | ListOf<DocumentId>, dataOrUpdater?: D | ((prev: D, meta: Item<D>) => D)): Promise<void> {
+        const items: DocumentOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
             const existing = this.data[idOrPayload];
@@ -84,19 +84,19 @@ export class CollectionDB<D> {
         if (items.length > 0) await this.codec.update(items, this.data);
     }
 
-    async insert(id: CollectionId, data: D): Promise<void>;
-    async insert(payload: { [id: CollectionId]: D }): Promise<void>;
-    async insert(idOrPayload: CollectionId | { [id: CollectionId]: D }, data?: D): Promise<void> {
-        const items: CollectionMemberOf<D>[] = [];
+    async insert(id: DocumentId, data: D): Promise<void>;
+    async insert(payload: { [id: DocumentId]: D }): Promise<void>;
+    async insert(idOrPayload: DocumentId | { [id: DocumentId]: D }, data?: D): Promise<void> {
+        const items: DocumentOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
-            const member: CollectionMemberOf<D> = { id: idOrPayload, data: data! };
+            const member: DocumentOf<D> = { id: idOrPayload, data: data! };
             this.data[idOrPayload] = member;
             this.indexRecord(idOrPayload, data!);
             items.push(member);
         } else {
             for (const [id, d] of Object.entries(idOrPayload)) {
-                const member: CollectionMemberOf<D> = { id, data: d as D };
+                const member: DocumentOf<D> = { id, data: d as D };
                 this.data[id] = member;
                 this.indexRecord(id, d as D);
                 items.push(member);
@@ -106,10 +106,10 @@ export class CollectionDB<D> {
         await this.codec.insert(items, this.data);
     }
 
-    async remove(target: CollectionId): Promise<void>;
-    async remove(target: ListOf<CollectionId>): Promise<void>;
-    async remove(target: CollectionId | ListOf<CollectionId>): Promise<void> {
-        const items: CollectionMemberOf<D>[] = [];
+    async remove(target: DocumentId): Promise<void>;
+    async remove(target: ListOf<DocumentId>): Promise<void>;
+    async remove(target: DocumentId | ListOf<DocumentId>): Promise<void> {
+        const items: DocumentOf<D>[] = [];
 
         if (typeof target === "string") {
             const item = this.data[target];
@@ -171,17 +171,17 @@ export class CollectionDB<D> {
 
     // --- Chain starters → pipeline ---
     where: {
-        <T>(lens: ($: SelectorLens<D> & CollectionMeta & LogicalOps) => Predicate<T> | PredicateResult): CollectionPipeline<D, "multi">;
+        <T>(lens: ($: SelectorLens<D> & DocumentMeta & LogicalOps) => Predicate<T> | PredicateResult): DocumentPipeline<D, "multi">;
     } = ((predFn: Function) => createPipeline(this, { type: "where", predFn })) as any;
     select: {
-        (target: CollectionId): CollectionPipeline<D, "single">;
-        (target: ListOf<CollectionId>): CollectionPipeline<D, "multi">;
-    } = ((target: CollectionId | ListOf<CollectionId>) => {
+        (target: DocumentId): DocumentPipeline<D, "single">;
+        (target: ListOf<DocumentId>): DocumentPipeline<D, "multi">;
+    } = ((target: DocumentId | ListOf<DocumentId>) => {
         if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
         return createPipeline(this, { type: "select", ids: [...target] });
     }) as any;
     all: {
-        (): CollectionPipeline<D, "multi">;
+        (): DocumentPipeline<D, "multi">;
     } = (() => createPipeline(this, { type: "all" })) as any;
 }
 
@@ -214,20 +214,17 @@ function evalWhereForItem<D>(predFn: Function, item: Item<D>): boolean {
     return Lens.match(item.data, predFn, { ID: item.id });
 }
 
-function tryIndexAccelerate<D>(predFn: Function, db: CollectionDB<D>): Set<string> | null {
+function tryIndexAccelerate<D>(predFn: Function, db: DocumentDB<D>): Set<string> | null {
     const probed = Lens.probe(predFn);
     if (!probed) return null;
 
     const { path, operator, operand, operand2 } = probed;
 
-    // Check if path is indexed
     const pathKey = stringifyIndex(path);
     const indices = (db as any).indices as IndexStore;
     if (!indices.keys().includes(pathKey)) return null;
 
-    // Strip negation — we can't accelerate negated ops via index (would need complement)
     if (operator.startsWith("!")) return null;
-    // Strip any-of/all-of suffixes — not directly index-accelerable
     if (operator.endsWith("|") || operator.endsWith("&")) return null;
 
     const indexOp = INDEX_OPS[operator];
@@ -239,9 +236,9 @@ function tryIndexAccelerate<D>(predFn: Function, db: CollectionDB<D>): Set<strin
     return indexOp(indices, pathKey, operand) as Set<string>;
 }
 
-function createPipeline<D>(db: CollectionDB<D>, seed: PipelineSeed): any {
+function createPipeline<D>(db: DocumentDB<D>, seed: PipelineSeed): any {
     const ops: PipelineOp[] = [];
-    const data = (db as any).data as CollectionOf<D>;
+    const data = (db as any).data as DocumentsOf<D>;
 
     function resolve(): Item<D>[] {
         switch (seed.type) {
@@ -254,14 +251,11 @@ function createPipeline<D>(db: CollectionDB<D>, seed: PipelineSeed): any {
             case "select":
                 return seed.ids.map((id) => data[id]).filter(Boolean) as Item<D>[];
             case "where": {
-                // Try index acceleration
                 const indexed = tryIndexAccelerate(seed.predFn, db);
                 if (indexed) {
-                    // Index gave us candidate IDs — fetch and filter (index may be stale for complex predicates)
                     const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as Item<D>[];
                     return candidates.filter((item) => evalWhereForItem(seed.predFn, item));
                 }
-                // Full scan
                 return Object.values(data).filter((item) => evalWhereForItem(seed.predFn, item));
             }
         }
@@ -379,12 +373,10 @@ function createPipeline<D>(db: CollectionDB<D>, seed: PipelineSeed): any {
             if (items.length === 0) return result;
 
             if (typeof args[0] === "function" && args.length === 1) {
-                // Whole-data updater: update(fn)
                 const ids = items.map((i) => i.id);
                 const updater = args[0] as (prev: D, meta: Item<D>) => D;
                 await db.update(ids, updater);
             } else if (typeof args[0] === "function") {
-                // Lens-targeted: update(lensFn, value)
                 const lensFn = args[0];
                 const value = args[1];
                 const ids = items.map((i) => i.id);
@@ -393,8 +385,7 @@ function createPipeline<D>(db: CollectionDB<D>, seed: PipelineSeed): any {
                     return prev;
                 });
             } else {
-                // Whole-data static: update(staticValue)
-                const payload: { [key: CollectionId]: D } = {};
+                const payload: { [key: DocumentId]: D } = {};
                 for (const item of items) payload[item.id] = args[0] as D;
                 await db.update(payload);
             }
@@ -416,10 +407,10 @@ function createPipeline<D>(db: CollectionDB<D>, seed: PipelineSeed): any {
 }
 
 // ------------------------------------------------------------
-// CollectionMeta
+// DocumentMeta
 // ------------------------------------------------------------
 
-export type CollectionMeta = {
+export type DocumentMeta = {
     ID: SelectorLens<string>;
 };
 
@@ -427,7 +418,7 @@ export type CollectionMeta = {
 // Pipeline Interface
 // ------------------------------------------------------------
 
-type Item<D> = CollectionMemberOf<D>;
+type Item<D> = DocumentOf<D>;
 type Cardinality = "single" | "multi";
 type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | undefined : Item<D>[];
 
@@ -435,7 +426,7 @@ type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | u
 // Terminals
 // ------------------------------------------------------------
 
-interface CollectionTerminals<D, C extends Cardinality> {
+interface DocumentTerminals<D, C extends Cardinality> {
     // --- Read terminals ---
     get(): Promise<TerminalResult<D, C>>;
     count(): Promise<number>;
@@ -447,26 +438,26 @@ interface CollectionTerminals<D, C extends Cardinality> {
     remove(): Promise<TerminalResult<D, C>>;
 
     // --- Write terminals (lens-targeted) ---
-    update<R>(lens: ($: DataLens<D>) => DataLens<R, any, any>, updater: Updater<R, Item<D>>): Promise<TerminalResult<D, C>>;
+    update<R>(lens: ($: MutatorLens<D>) => MutatorLensOf<R>, updater: Updater<R, Item<D>>): Promise<TerminalResult<D, C>>;
 }
 
 // ------------------------------------------------------------
 // The Pipeline
 // ------------------------------------------------------------
 
-export interface CollectionPipeline<D, C extends Cardinality> extends CollectionTerminals<D, C> {
+export interface DocumentPipeline<D, C extends Cardinality> extends DocumentTerminals<D, C> {
     // Filtering
-    where<T>(lens: ($: SelectorLens<D> & CollectionMeta & LogicalOps) => Predicate<T> | PredicateResult): CollectionPipeline<D, C>;
+    where<T>(lens: ($: SelectorLens<D> & DocumentMeta & LogicalOps) => Predicate<T> | PredicateResult): DocumentPipeline<D, C>;
 
     // Cardinality reducers (multi → single)
-    first(): CollectionPipeline<D, "single">;
-    last(): CollectionPipeline<D, "single">;
-    at(index: number): CollectionPipeline<D, "single">;
+    first(): DocumentPipeline<D, "single">;
+    last(): DocumentPipeline<D, "single">;
+    at(index: number): DocumentPipeline<D, "single">;
 
     // Presentation (preserves cardinality)
-    sort<T>(lens: ($: SelectorLens<D> & CollectionMeta) => SelectorLens<T>, dir: "asc" | "desc"): CollectionPipeline<D, C>;
-    distinct(): CollectionPipeline<D, C>;
-    slice(start: number, end?: number): CollectionPipeline<D, C>;
-    paginate(page: number, count: number): CollectionPipeline<D, C>;
-    window(skip: number, take: number): CollectionPipeline<D, C>; // variation that can use slice under the hood. Give me up-to-Y-items starting at X
+    sort<T>(lens: ($: SelectorLens<D> & DocumentMeta) => SelectorLens<T>, dir: "asc" | "desc"): DocumentPipeline<D, C>;
+    distinct(): DocumentPipeline<D, C>;
+    slice(start: number, end?: number): DocumentPipeline<D, C>;
+    paginate(page: number, count: number): DocumentPipeline<D, C>;
+    window(skip: number, take: number): DocumentPipeline<D, C>;
 }

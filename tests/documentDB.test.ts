@@ -1,18 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { CollectionDB } from "../src/db/collectionDB";
+import { DocumentDB, DocumentOf } from "../src/db/documentDB";
 import { MemoryCodec } from "../src/codec/memoryCodec";
 import { IndexStore } from "../src/util/indices";
-import { CollectionMemberOf, CollectionOf } from "../src/types";
 
 type User = { name: string; age: number };
 
 function makeDB() {
-    const codec = new MemoryCodec<CollectionMemberOf<User>, CollectionOf<User>>();
-    return new CollectionDB<User>(codec);
+    const codec = new MemoryCodec<DocumentOf<User>>();
+    return new DocumentDB<User>(codec);
 }
 
 /** Reach into TS-private `indices` field for test assertions */
-function idx(db: CollectionDB<any>): IndexStore {
+function idx(db: DocumentDB<any>): IndexStore {
     return (db as any).indices;
 }
 
@@ -196,26 +195,26 @@ describe("update", () => {
     });
 
     it("calls codec.update", async () => {
-        const codec = new MemoryCodec<CollectionMemberOf<User>, CollectionOf<User>>();
+        const codec = new MemoryCodec<DocumentOf<User>>();
         let updateCalled = false;
         codec.update = async (items) => {
             updateCalled = true;
             expect(items).toHaveLength(1);
             expect(items[0].data.age).toBe(31);
         };
-        const db = new CollectionDB<User>(codec);
+        const db = new DocumentDB<User>(codec);
         await db.insert("a", { name: "Alice", age: 30 });
         await db.update("a", { name: "Alice", age: 31 });
         expect(updateCalled).toBe(true);
     });
 
     it("does not call codec.update when nothing is updated", async () => {
-        const codec = new MemoryCodec<CollectionMemberOf<User>, CollectionOf<User>>();
+        const codec = new MemoryCodec<DocumentOf<User>>();
         let updateCalled = false;
         codec.update = async () => {
             updateCalled = true;
         };
-        const db = new CollectionDB<User>(codec);
+        const db = new DocumentDB<User>(codec);
         await db.update("missing", { name: "Ghost", age: 0 });
         expect(updateCalled).toBe(false);
     });
@@ -281,8 +280,8 @@ describe("index maintenance", () => {
 
     it("handles nested path indices", async () => {
         type WithAddress = { name: string; address: { city: string; zip: string } };
-        const codec = new MemoryCodec<CollectionMemberOf<WithAddress>, CollectionOf<WithAddress>>();
-        const db = new CollectionDB<WithAddress>(codec);
+        const codec = new MemoryCodec<DocumentOf<WithAddress>>();
+        const db = new DocumentDB<WithAddress>(codec);
         db.addIndex(($) => $("address")("city"));
 
         await db.insert("a", { name: "Alice", address: { city: "NYC", zip: "10001" } });
@@ -321,39 +320,39 @@ describe("index maintenance", () => {
 
 describe("codec notifications", () => {
     it("calls codec.insert on insert", async () => {
-        const codec = new MemoryCodec<CollectionMemberOf<User>, CollectionOf<User>>();
+        const codec = new MemoryCodec<DocumentOf<User>>();
         let insertCalled = false;
         codec.insert = async (items) => {
             insertCalled = true;
             expect(items).toHaveLength(1);
             expect(items[0].data.name).toBe("Alice");
         };
-        const db = new CollectionDB<User>(codec);
+        const db = new DocumentDB<User>(codec);
         await db.insert("a", { name: "Alice", age: 30 });
         expect(insertCalled).toBe(true);
     });
 
     it("calls codec.delete on remove", async () => {
-        const codec = new MemoryCodec<CollectionMemberOf<User>, CollectionOf<User>>();
+        const codec = new MemoryCodec<DocumentOf<User>>();
         let deleteCalled = false;
         codec.delete = async (items) => {
             deleteCalled = true;
             expect(items).toHaveLength(1);
             expect(items[0].id).toBe("a");
         };
-        const db = new CollectionDB<User>(codec);
+        const db = new DocumentDB<User>(codec);
         await db.insert("a", { name: "Alice", age: 30 });
         await db.remove("a");
         expect(deleteCalled).toBe(true);
     });
 
     it("does not call codec.delete when nothing is removed", async () => {
-        const codec = new MemoryCodec<CollectionMemberOf<User>, CollectionOf<User>>();
+        const codec = new MemoryCodec<DocumentOf<User>>();
         let deleteCalled = false;
         codec.delete = async () => {
             deleteCalled = true;
         };
-        const db = new CollectionDB<User>(codec);
+        const db = new DocumentDB<User>(codec);
         await db.remove("missing");
         expect(deleteCalled).toBe(false);
     });
@@ -466,28 +465,40 @@ describe("pipeline: where", () => {
 describe("pipeline: sort", () => {
     it("sorts ascending", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "asc").get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .get();
         const ages = (result as any[]).map((r: any) => r.data.age);
         expect(ages).toEqual([25, 28, 30, 35]);
     });
 
     it("sorts descending", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "desc").get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "desc")
+            .get();
         const ages = (result as any[]).map((r: any) => r.data.age);
         expect(ages).toEqual([35, 30, 28, 25]);
     });
 
     it("sorts by string field", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("name"), "asc").get();
+        const result = await db
+            .all()
+            .sort(($) => $("name"), "asc")
+            .get();
         const names = (result as any[]).map((r: any) => r.data.name);
         expect(names).toEqual(["Alice", "Bob", "Charlie", "Diana"]);
     });
 
     it("sorts by $.ID", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $.ID, "desc").get();
+        const result = await db
+            .all()
+            .sort(($) => $.ID, "desc")
+            .get();
         const ids = (result as any[]).map((r: any) => r.id);
         expect(ids).toEqual(["d", "c", "b", "a"]);
     });
@@ -496,7 +507,11 @@ describe("pipeline: sort", () => {
 describe("pipeline: slice / paginate / window", () => {
     it("slices results", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "asc").slice(1, 3).get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .slice(1, 3)
+            .get();
         expect(result).toHaveLength(2);
         expect((result as any[])[0].data.age).toBe(28);
         expect((result as any[])[1].data.age).toBe(30);
@@ -504,8 +519,16 @@ describe("pipeline: slice / paginate / window", () => {
 
     it("paginates results", async () => {
         const db = await seededDB();
-        const page1 = await db.all().sort(($) => $("age"), "asc").paginate(1, 2).get();
-        const page2 = await db.all().sort(($) => $("age"), "asc").paginate(2, 2).get();
+        const page1 = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .paginate(1, 2)
+            .get();
+        const page2 = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .paginate(2, 2)
+            .get();
         expect(page1).toHaveLength(2);
         expect(page2).toHaveLength(2);
         expect((page1 as any[])[0].data.age).toBe(25);
@@ -514,7 +537,11 @@ describe("pipeline: slice / paginate / window", () => {
 
     it("windows results", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "asc").window(1, 2).get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .window(1, 2)
+            .get();
         expect(result).toHaveLength(2);
         expect((result as any[])[0].data.age).toBe(28);
     });
@@ -527,25 +554,40 @@ describe("pipeline: slice / paginate / window", () => {
 describe("pipeline: first / last / at", () => {
     it("first returns first item", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "asc").first().get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .first()
+            .get();
         expect((result as any).data.age).toBe(25);
     });
 
     it("last returns last item", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "asc").last().get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .last()
+            .get();
         expect((result as any).data.age).toBe(35);
     });
 
     it("at returns item at index", async () => {
         const db = await seededDB();
-        const result = await db.all().sort(($) => $("age"), "asc").at(2).get();
+        const result = await db
+            .all()
+            .sort(($) => $("age"), "asc")
+            .at(2)
+            .get();
         expect((result as any).data.age).toBe(30);
     });
 
     it("first on empty returns undefined", async () => {
         const db = await seededDB();
-        const result = await db.where(($) => [$("age"), ">", 100]).first().get();
+        const result = await db
+            .where(($) => [$("age"), ">", 100])
+            .first()
+            .get();
         expect(result).toBeUndefined();
     });
 });
@@ -573,7 +615,10 @@ describe("pipeline: count / exists / id", () => {
         const singleId = await db.select("a").id();
         expect(singleId).toBe("a");
 
-        const multiIds = await db.all().sort(($) => $("name"), "asc").id();
+        const multiIds = await db
+            .all()
+            .sort(($) => $("name"), "asc")
+            .id();
         expect(multiIds).toEqual(["a", "b", "c", "d"]);
     });
 
@@ -601,7 +646,7 @@ describe("pipeline: update terminal", () => {
         await db.where(($) => [$("age"), ">", 28]).update((prev) => ({ ...prev, age: prev.age + 100 }));
         expect(db.get("a")?.data.age).toBe(130); // 30 + 100
         expect(db.get("c")?.data.age).toBe(135); // 35 + 100
-        expect(db.get("b")?.data.age).toBe(25);  // unchanged
+        expect(db.get("b")?.data.age).toBe(25); // unchanged
     });
 
     it("updates single select with updater", async () => {
@@ -617,8 +662,8 @@ describe("pipeline: remove terminal", () => {
         await db.where(($) => [$("age"), "<", 29]).remove();
         expect(db.get("b")).toBeUndefined(); // age 25
         expect(db.get("d")).toBeUndefined(); // age 28
-        expect(db.get("a")).toBeDefined();   // age 30
-        expect(db.get("c")).toBeDefined();   // age 35
+        expect(db.get("a")).toBeDefined(); // age 30
+        expect(db.get("c")).toBeDefined(); // age 35
     });
 
     it("removes single select", async () => {

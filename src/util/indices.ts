@@ -1,11 +1,10 @@
-import { LensPathSegment } from "../types";
-import { sortCompare } from "./predicate";
+import { Lens, sortCompare } from "./lens";
 
 //#region - Path Serialization
 
 const ESCAPE = /([.,()\\])/g;
 
-export const stringifyIndex = (path: LensPathSegment[]) => {
+export const stringifyIndex = (path: Lens.PathSegment[]) => {
     return path
         .map((segment) => {
             switch (segment.type) {
@@ -66,7 +65,8 @@ class BTree<V> {
 
     // Binary search: returns index of first key >= search key
     #search(node: BTreeNode<V>, key: unknown): number {
-        let lo = 0, hi = node.keys.length;
+        let lo = 0,
+            hi = node.keys.length;
         while (lo < hi) {
             const mid = (lo + hi) >>> 1;
             if (sortCompare(node.keys[mid], key) < 0) lo = mid + 1;
@@ -351,16 +351,16 @@ export class IndexStore {
 
     // --- Index lifecycle ---
 
-    create(path: LensPathSegment[]): void {
+    create(path: Lens.PathSegment[]): void {
         const key = stringifyIndex(path);
         if (!this.#indices.has(key)) this.#indices.set(key, new BTree());
     }
 
-    drop(path: LensPathSegment[]): void {
+    drop(path: Lens.PathSegment[]): void {
         this.#indices.delete(stringifyIndex(path));
     }
 
-    has(path: LensPathSegment[]): boolean {
+    has(path: Lens.PathSegment[]): boolean {
         return this.#indices.has(stringifyIndex(path));
     }
 

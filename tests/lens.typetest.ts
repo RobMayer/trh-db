@@ -1,5 +1,5 @@
 import { TrhSymbols } from "@trh/symbols";
-import { DataLens, SelectorLens, MutatorLensOf, ApplierLensOf } from "../src/util/lens/types";
+import { SelectorLens, MutatorLensOf, ApplierLensOf, PathLens, DataLens } from "../src/util/lens";
 
 // ------------------------------------------------------------
 // Test Data Shapes
@@ -389,8 +389,6 @@ testMutate(maData, ($) => $("m").cell(d$("idx"), d$("idx")), 99);
 // ------------------------------------------------------------
 // SimpleLens — Property-Only Navigation
 // ------------------------------------------------------------
-
-import { PathLens } from "../src/util/lens/types";
 
 type IndexData = {
     name: string;

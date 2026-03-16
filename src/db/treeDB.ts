@@ -1,7 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../types";
-import { SelectorLens } from "../util/lens/types";
-import { LogicalOps, PredicateResult } from "../util/logic";
-import { Predicate } from "../util/predicate";
+import { SelectorLens, LogicalOps, PredicateResult, Predicate } from "../util/lens";
 
 class TreeDB<D> {
     // --- Direct methods (bypass pipeline) ---

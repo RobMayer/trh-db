@@ -1,11 +1,11 @@
-import { JsonCodec } from "./codec/jsonCodec";
-import { CollectionDB } from "./db/collectionDB";
+import { TrhCodec } from "./codec/trhCodec";
+import { DocumentDB } from "./db/documentDB";
 
 type Resource = {
     name: string;
 };
 
-const resources = new CollectionDB<Resource>(new JsonCodec(".dev/resources.json"));
+const resources = new DocumentDB<Resource>(new TrhCodec(".dev/resources.json"));
 
 const doTheThing = async () => {
     await resources.load();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { stringifyIndex, IndexStore } from "../src/util/indices";
-import { LensPathSegment } from "../src/types";
+import { Lens } from "../src/util/lens";
 
 // ------------------------------------------------------------
 // stringifyIndex
@@ -8,12 +8,12 @@ import { LensPathSegment } from "../src/types";
 
 describe("stringifyIndex", () => {
     it("serializes property segments", () => {
-        const path: LensPathSegment[] = [{ type: "property", key: "name" }];
+        const path: Lens.PathSegment[] = [{ type: "property", key: "name" }];
         expect(stringifyIndex(path)).toBe("name");
     });
 
     it("serializes nested properties with dot join", () => {
-        const path: LensPathSegment[] = [
+        const path: Lens.PathSegment[] = [
             { type: "property", key: "address" },
             { type: "property", key: "zip" },
         ];
@@ -21,12 +21,12 @@ describe("stringifyIndex", () => {
     });
 
     it("escapes dots in property keys", () => {
-        const path: LensPathSegment[] = [{ type: "property", key: "a.b" }];
+        const path: Lens.PathSegment[] = [{ type: "property", key: "a.b" }];
         expect(stringifyIndex(path)).toBe("a\\.b");
     });
 
     it("serializes index segments as numbers", () => {
-        const path: LensPathSegment[] = [
+        const path: Lens.PathSegment[] = [
             { type: "property", key: "items" },
             { type: "index", index: 3 },
             { type: "property", key: "name" },
@@ -35,7 +35,7 @@ describe("stringifyIndex", () => {
     });
 
     it("serializes accessor segments", () => {
-        const path: LensPathSegment[] = [
+        const path: Lens.PathSegment[] = [
             { type: "property", key: "ex" },
             { type: "accessor", name: "link", args: ["test"] },
         ];
@@ -43,22 +43,22 @@ describe("stringifyIndex", () => {
     });
 
     it("serializes accessor with multiple args", () => {
-        const path: LensPathSegment[] = [{ type: "accessor", name: "cell", args: [0, 1] }];
+        const path: Lens.PathSegment[] = [{ type: "accessor", name: "cell", args: [0, 1] }];
         expect(stringifyIndex(path)).toBe("cell(0,1)");
     });
 
     it("escapes special chars in accessor names and args", () => {
-        const path: LensPathSegment[] = [{ type: "accessor", name: "a.b", args: ["c,d", "e(f)"] }];
+        const path: Lens.PathSegment[] = [{ type: "accessor", name: "a.b", args: ["c,d", "e(f)"] }];
         expect(stringifyIndex(path)).toBe("a\\.b(c\\,d,e\\(f\\))");
     });
 
     it("handles accessor with no args", () => {
-        const path: LensPathSegment[] = [{ type: "accessor", name: "foo" }];
+        const path: Lens.PathSegment[] = [{ type: "accessor", name: "foo" }];
         expect(stringifyIndex(path)).toBe("foo()");
     });
 
     it("escapes backslashes", () => {
-        const path: LensPathSegment[] = [{ type: "property", key: "a\\b" }];
+        const path: Lens.PathSegment[] = [{ type: "property", key: "a\\b" }];
         expect(stringifyIndex(path)).toBe("a\\\\b");
     });
 });
@@ -68,8 +68,8 @@ describe("stringifyIndex", () => {
 // ------------------------------------------------------------
 
 describe("IndexStore", () => {
-    const namePath: LensPathSegment[] = [{ type: "property", key: "name" }];
-    const agePath: LensPathSegment[] = [{ type: "property", key: "age" }];
+    const namePath: Lens.PathSegment[] = [{ type: "property", key: "name" }];
+    const agePath: Lens.PathSegment[] = [{ type: "property", key: "age" }];
 
     describe("lifecycle", () => {
         it("creates and checks indices", () => {

@@ -1,7 +1,5 @@
 import { ListOf, ListOr, TreeId, TreeItemOf, Updater } from "../src/types";
-import { SelectorLens } from "../src/util/lens/types";
-import { LogicalOps, PredicateResult } from "../src/util/logic";
-import { Predicate } from "../src/util/predicate";
+import { SelectorLens, LogicalOps, PredicateResult, Predicate } from "../src/util/lens";
 
 // ------------------------------------------------------------
 // Pipeline Type Definitions (prototype)

@@ -8,32 +8,9 @@ export type Codec<D extends { id: string; data: any }, M = null> = {
     metadata: M | null;
 };
 
-// --- Union-safe key distribution ---
-
-// Distributes keyof over union members: AllStringKeys<A | B> = keyof A | keyof B
-export type AllStringKeys<T> = T extends any ? keyof T & string : never;
-
-// Safe lookup across union members: yields the value type where the key exists, undefined elsewhere
-export type SafeLookup<T, K extends string> = T extends any ? (K extends keyof T ? T[K] : undefined) : never;
-
 export type ListOf<D> = Set<D> | D[];
 export type ListOr<D> = D | Set<D> | D[];
 export type Updater<T, C> = T | ((prev: T, context: C) => T);
-
-type Primitive = string | number | boolean | bigint | symbol | null | undefined;
-export type DeepReadonly<T> = T extends Primitive
-    ? T
-    : T extends Function
-      ? T
-      : T extends ReadonlyArray<infer U>
-        ? ReadonlyArray<DeepReadonly<U>>
-        : T extends ReadonlyMap<infer K, infer V>
-          ? ReadonlyMap<K, DeepReadonly<V>>
-          : T extends ReadonlySet<infer U>
-            ? ReadonlySet<DeepReadonly<U>>
-            : { readonly [K in keyof T]: DeepReadonly<T[K]> };
-
-export type LensPathSegment = { type: "property"; key: string } | { type: "index"; index: number } | { type: "accessor"; name: string; args?: unknown[] };
 
 export type TreeId = string;
 export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
@@ -41,10 +18,6 @@ export type TreeItemOf<D> = { id: TreeId; parent: TreeId | null; children: TreeI
 
 export type TreeSelector<D> = any; // lens-like interface for selecting members(s) in a tree
 export type TreeLens<D> = any; // lens-like interface for selecting members or properties thereof in a tree
-
-export type CollectionId = string;
-export type CollectionOf<D> = { [id: CollectionId]: CollectionMemberOf<D> };
-export type CollectionMemberOf<D> = { id: CollectionId; data: D };
 
 export type GraphNodeId = string;
 export type GraphLinkId = string;
