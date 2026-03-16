@@ -1,23 +1,13 @@
 import { Codec } from "../types";
 
 export class MemoryCodec<D extends { id: string; data: any }, M = null> implements Codec<D, M> {
-    #meta: M | null;
-    constructor() {
-        this.#meta = null;
-    }
-    update: (items: D[], data: { [id: string]: D }) => Promise<void> = async () => {};
-    insert: (items: D[], data: { [id: string]: D }) => Promise<void> = async () => {};
-    delete: (items: D[], data: { [id: string]: D }) => Promise<void> = async () => {};
-    struct: (items: D[], data: { [id: string]: D }) => Promise<void> = async () => {};
-    load: () => Promise<{ [id: string]: D }> = async () => {
-        return {} as { [id: string]: D };
+    update: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
+    insert: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
+    delete: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
+    struct: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
+    load: () => Promise<[data: { [id: string]: D }, meta: M | null]> = async () => {
+        return [{} as { [id: string]: D }, null];
     };
-    flush: (data: { [id: string]: D }) => Promise<void> = async () => {};
-    get metadata(): M | null {
-        return this.#meta;
-    }
-
-    set metadata(value: M | null) {
-        this.#meta = value;
-    }
+    flush: (data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
+    setMeta: (value: M | null, data: { [id: string]: D }) => Promise<void> = async () => {};
 }

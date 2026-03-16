@@ -5,6 +5,7 @@ const OP_INSERT = "I"; // Full item — replay: result[id] = parsed
 const OP_UPDATE = "U"; // Data only — replay: result[id].data = parsed
 const OP_STRUCT = "S"; // Structural fields only (everything except id and data) — replay: Object.assign(result[id], parsed)
 const OP_DELETE = "D"; // Delete — replay: delete result[id]
+const OP_META = "M"; // Metadata — replay: meta = parsed
 // const OP_FIELD = "F"; // to be used later - will be [typeof OP_SET, id: string, path: LensPathSegment: [], data: any] to strategically alter an item
 // const OP_PARTIAL = "P"; // to be used later - I can't remember how but the previous version of this had it, so I'm adding it here.
 
@@ -15,7 +16,6 @@ const SPLIT_ENTRY = /(?<!\\)\x1c/s; // File Separator
 const SPLIT_OPERATION = /(?<!\\)\x1d/s; // Group Separator
 
 const SIGIL_PREFIX = "\x10"; // Data-Link Escape
-const SEP_META = "\x02"; // Start of Text — separates meta JSON from ledger
 
 /**
  *  this codec stores data in a modified json format
@@ -29,19 +29,12 @@ export class TrhCodec<D extends { id: string; data: any }, M = null> implements 
     #file: string;
     #transformers: { [sigil: string]: { serializer: (value: any) => any; parser: (token: any) => any } } = {};
 
-    #meta: M | null;
-
-    get metadata(): M | null {
-        return this.#meta;
-    }
-
-    set metadata(value: M | null) {
-        this.#meta = value;
+    async setMeta(value: M | null, _data: { [id: string]: D }): Promise<void> {
+        await appendFile(this.#file, SEP_ENTRY + [OP_META, JSON.stringify(value, this.#replacer)].join(SEP_OPERATION), "utf-8");
     }
 
     constructor(file: string) {
         this.#file = file;
-        this.#meta = null;
 
         // Built-in type support
         this.register<number, boolean>(
@@ -112,72 +105,68 @@ export class TrhCodec<D extends { id: string; data: any }, M = null> implements 
 
     // --- Codec interface ---
 
-    async load(): Promise<{ [id: string]: D }> {
+    async load(): Promise<[data: { [id: string]: D }, meta: M | null]> {
         let raw: string;
         try {
             raw = await readFile(this.#file, "utf-8");
         } catch {
-            return {} as { [id: string]: D };
-        }
-
-        // Split meta from ledger
-        let ledger: string;
-        const stxIndex = raw.indexOf(SEP_META);
-        if (stxIndex !== -1) {
-            this.#meta = JSON.parse(raw.slice(0, stxIndex)) as M;
-            ledger = raw.slice(stxIndex + 1);
-        } else {
-            ledger = raw;
+            return [{} as { [id: string]: D }, null];
         }
 
         // Replay ledger
         const result: { [id: string]: D } = {};
-        if (ledger.trim()) {
-            for (const entry of ledger.split(SPLIT_ENTRY)) {
+        let meta: M | null = null;
+        if (raw.trim()) {
+            for (const entry of raw.split(SPLIT_ENTRY)) {
                 if (!entry.trim()) continue;
-                const [operation, id, data] = entry.split(SPLIT_OPERATION);
+                const parts = entry.split(SPLIT_OPERATION);
+                const operation = parts[0];
                 if (!operation) continue;
 
-                if (operation === OP_INSERT) {
-                    result[id] = JSON.parse(data, this.#reviver) as D;
+                if (operation === OP_META) {
+                    meta = JSON.parse(parts[1], this.#reviver) as M;
+                } else if (operation === OP_INSERT) {
+                    result[parts[1]] = JSON.parse(parts[2], this.#reviver) as D;
                 } else if (operation === OP_UPDATE) {
-                    if (result[id]) result[id].data = JSON.parse(data, this.#reviver);
+                    if (result[parts[1]]) result[parts[1]].data = JSON.parse(parts[2], this.#reviver);
                 } else if (operation === OP_STRUCT) {
-                    if (result[id]) Object.assign(result[id], JSON.parse(data, this.#reviver));
+                    if (result[parts[1]]) Object.assign(result[parts[1]], JSON.parse(parts[2], this.#reviver));
                 } else if (operation === OP_DELETE) {
-                    delete result[id];
+                    delete result[parts[1]];
                 }
             }
         }
 
         // Compact on load
-        await this.flush(result);
+        await this.flush(result, meta);
 
-        return result;
+        return [result, meta];
     }
 
-    async flush(data: { [id: string]: D }): Promise<void> {
+    async flush(data: { [id: string]: D }, meta: M | null): Promise<void> {
         const entries: string[] = [];
+        if (meta !== null) {
+            entries.push([OP_META, JSON.stringify(meta, this.#replacer)].join(SEP_OPERATION));
+        }
         for (const [id, item] of Object.entries(data)) {
             entries.push([OP_INSERT, id, JSON.stringify(item, this.#replacer)].join(SEP_OPERATION));
         }
-        const metaPrefix = this.#meta !== null ? JSON.stringify(this.#meta) + SEP_META : "";
-        await writeFile(this.#file, metaPrefix + entries.join(SEP_ENTRY), "utf-8");
+        await writeFile(this.#file, entries.join(SEP_ENTRY), "utf-8");
     }
 
-    async insert(items: D[]): Promise<void> {
+    async insert(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => [OP_INSERT, item.id, JSON.stringify(item, this.#replacer)].join(SEP_OPERATION)).join(SEP_ENTRY), "utf-8");
     }
 
-    async update(items: D[]): Promise<void> {
+    async update(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => [OP_UPDATE, item.id, JSON.stringify(item.data, this.#replacer)].join(SEP_OPERATION)).join(SEP_ENTRY), "utf-8");
     }
 
-    async delete(items: D[]): Promise<void> {
+    async delete(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => [OP_DELETE, item.id].join(SEP_OPERATION)).join(SEP_ENTRY), "utf-8");
     }
 
-    async struct(items: D[]): Promise<void> {
+    async struct(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => {
             const { id: _, data: __, ...structural } = item as any;
             return [OP_STRUCT, item.id, JSON.stringify(structural, this.#replacer)].join(SEP_OPERATION);

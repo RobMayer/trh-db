@@ -25,7 +25,9 @@ export class DocumentDB<D> {
     }
 
     async load() {
-        return this.codec.load();
+        const [data, meta] = await this.codec.load();
+        this.data = data;
+        return meta;
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -81,7 +83,7 @@ export class DocumentDB<D> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.data);
+        if (items.length > 0) await this.codec.update(items, this.data, null);
     }
 
     async insert(id: DocumentId, data: D): Promise<void>;
@@ -103,7 +105,7 @@ export class DocumentDB<D> {
             }
         }
 
-        await this.codec.insert(items, this.data);
+        await this.codec.insert(items, this.data, null);
     }
 
     async remove(target: DocumentId): Promise<void>;
@@ -129,7 +131,7 @@ export class DocumentDB<D> {
             }
         }
 
-        if (items.length > 0) await this.codec.delete(items, this.data);
+        if (items.length > 0) await this.codec.delete(items, this.data, null);
     }
 
     // --- Index management ---

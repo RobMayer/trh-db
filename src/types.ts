@@ -1,11 +1,11 @@
 export type Codec<D extends { id: string; data: any }, M = null> = {
-    update: (items: D[], data: { [id: string]: D }) => Promise<void>;
-    insert: (items: D[], data: { [id: string]: D }) => Promise<void>;
-    delete: (items: D[], data: { [id: string]: D }) => Promise<void>;
-    struct: (items: D[], data: { [id: string]: D }) => Promise<void>;
-    load: () => Promise<{ [id: string]: D }>;
-    flush: (data: { [id: string]: D }) => Promise<void>;
-    metadata: M | null;
+    update: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
+    insert: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
+    delete: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
+    struct: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
+    load: () => Promise<[data: { [id: string]: D }, meta: M | null]>;
+    flush: (data: { [id: string]: D }, meta: M | null) => Promise<void>;
+    setMeta: (value: M | null, data: { [id: string]: D }) => Promise<void>;
 };
 
 export type ListOf<D> = Set<D> | D[];
