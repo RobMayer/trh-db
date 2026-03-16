@@ -314,12 +314,15 @@ export class TreeDB<D, U = null> {
         if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
         return createPipeline(this, { type: "select", ids: [...target] });
     }) as any;
-    all: {
-        (): TreePipeline<D, "multi">;
-    } = (() => createPipeline(this, { type: "all" })) as any;
     roots: {
         (): TreePipeline<D, "multi">;
     } = (() => createPipeline(this, { type: "roots" })) as any;
+    deep: {
+        (): TreePipeline<D, "multi">;
+    } = (() => createPipeline(this, { type: "deep" })) as any;
+    wide: {
+        (): TreePipeline<D, "multi">;
+    } = (() => createPipeline(this, { type: "wide" })) as any;
     ancestors: {
         (target: ListOr<TreeId>): TreePipeline<D, "multi">;
     } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "ancestors", ids: normalizeIds(target) })) as any;
@@ -333,12 +336,12 @@ export class TreeDB<D, U = null> {
         if (typeof target === "string") return createPipeline(this, { type: "parentOne", id: target });
         return createPipeline(this, { type: "parent", ids: normalizeIds(target) });
     }) as any;
-    deep: {
+    deepDescendants: {
         (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "deep", ids: normalizeIds(target) })) as any;
-    wide: {
+    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "deepDescendants", ids: normalizeIds(target) })) as any;
+    wideDescendants: {
         (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "wide", ids: normalizeIds(target) })) as any;
+    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "wideDescendants", ids: normalizeIds(target) })) as any;
     siblings: {
         (target: ListOr<TreeId>): TreePipeline<D, "multi">;
     } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "siblings", ids: normalizeIds(target) })) as any;
@@ -379,17 +382,18 @@ export type TreeMeta = {
 // ------------------------------------------------------------
 
 type PipelineSeed =
-    | { type: "all" }
     | { type: "select"; ids: string[] }
     | { type: "selectOne"; id: string }
     | { type: "where"; predFn: Function }
     | { type: "roots" }
+    | { type: "deep" }
+    | { type: "wide" }
     | { type: "ancestors"; ids: string[] }
     | { type: "children"; ids: string[] }
     | { type: "parentOne"; id: string }
     | { type: "parent"; ids: string[] }
-    | { type: "deep"; ids: string[] }
-    | { type: "wide"; ids: string[] }
+    | { type: "deepDescendants"; ids: string[] }
+    | { type: "wideDescendants"; ids: string[] }
     | { type: "siblings"; ids: string[] };
 
 type PipelineOp =
@@ -404,8 +408,8 @@ type PipelineOp =
     | { type: "parent" }
     | { type: "children" }
     | { type: "siblings" }
-    | { type: "deep" }
-    | { type: "wide" }
+    | { type: "deepDescendants" }
+    | { type: "wideDescendants" }
     | { type: "roots" };
 
 const INDEX_OPS: { [op: string]: (idx: IndexStore, key: string, operand: unknown, operand2?: unknown) => ReadonlySet<string> | Set<string> } = {
@@ -497,7 +501,7 @@ function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>):
                 }
                 break;
             }
-            case "deep": {
+            case "deepDescendants": {
                 const stack = [...item.children];
                 while (stack.length > 0) {
                     const currentId = stack.pop()!;
@@ -510,7 +514,7 @@ function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>):
                 }
                 break;
             }
-            case "wide": {
+            case "wideDescendants": {
                 const queue = [...item.children];
                 while (queue.length > 0) {
                     const currentId = queue.shift()!;
@@ -539,8 +543,34 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
 
     function resolve(): Item<D>[] {
         switch (seed.type) {
-            case "all":
-                return Object.values(data);
+            case "deep": {
+                const result: Item<D>[] = [];
+                const roots = Object.values(data).filter((item) => item.parent === null);
+                const stack = [...roots].reverse();
+                while (stack.length > 0) {
+                    const current = stack.pop()!;
+                    result.push(current);
+                    for (let i = current.children.length - 1; i >= 0; i--) {
+                        const child = data[current.children[i]];
+                        if (child) stack.push(child);
+                    }
+                }
+                return result;
+            }
+            case "wide": {
+                const result: Item<D>[] = [];
+                const roots = Object.values(data).filter((item) => item.parent === null);
+                const queue = [...roots];
+                while (queue.length > 0) {
+                    const current = queue.shift()!;
+                    result.push(current);
+                    for (const childId of current.children) {
+                        const child = data[childId];
+                        if (child) queue.push(child);
+                    }
+                }
+                return result;
+            }
             case "selectOne": {
                 const item = data[seed.id];
                 return item ? [item] : [];
@@ -607,7 +637,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 }
                 return result;
             }
-            case "deep": {
+            case "deepDescendants": {
                 const result: Item<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
@@ -628,7 +658,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 }
                 return result;
             }
-            case "wide": {
+            case "wideDescendants": {
                 const result: Item<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
@@ -716,8 +746,8 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 case "parent":
                 case "children":
                 case "siblings":
-                case "deep":
-                case "wide":
+                case "deepDescendants":
+                case "wideDescendants":
                 case "roots":
                     items = resolveTraversal(items, op.type, data);
                     isSingle = false;
@@ -785,12 +815,12 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
             ops.push({ type: "siblings" });
             return pipeline;
         },
-        deep() {
-            ops.push({ type: "deep" });
+        deepDescendants() {
+            ops.push({ type: "deepDescendants" });
             return pipeline;
         },
-        wide() {
-            ops.push({ type: "wide" });
+        wideDescendants() {
+            ops.push({ type: "wideDescendants" });
             return pipeline;
         },
         roots() {
@@ -921,8 +951,8 @@ export interface TreePipeline<D, C extends Cardinality> extends TreeTerminals<D,
     parent(): TreePipeline<D, "multi">;
     children(): TreePipeline<D, "multi">;
     siblings(): TreePipeline<D, "multi">;
-    deep(): TreePipeline<D, "multi">;
-    wide(): TreePipeline<D, "multi">;
+    deepDescendants(): TreePipeline<D, "multi">;
+    wideDescendants(): TreePipeline<D, "multi">;
     roots(): TreePipeline<D, "multi">;
 
     // Cardinality reducers (multi → single)
