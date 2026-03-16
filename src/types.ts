@@ -1,9 +1,10 @@
-export type Codec<I, D> = {
+export type Codec<I, D, M = null> = {
     update: (items: I[], data: D) => Promise<void>;
     insert: (items: I[], data: D) => Promise<void>;
     delete: (items: I[], data: D) => Promise<void>;
     load: () => Promise<D>;
     flush: (data: D) => Promise<void>;
+    metadata: M | null;
 };
 
 // --- Union-safe key distribution ---

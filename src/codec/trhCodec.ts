@@ -23,12 +23,23 @@ const SIGIL_PREFIX = "\x10"; // Data-Link Escape
  *  the data is stored either in a raw json form, or in an object where the key starts with a SIGIL_PREFIX and then the name of the sigil, the value is then parsed using the registered parser for that sigil.
  */
 
-export class TrhCodec<I extends { id: string }, D extends { [id: string]: I }> implements Codec<I, D> {
+export class TrhCodec<I extends { id: string }, D extends { [id: string]: I }, M = null> implements Codec<I, D, M> {
     #file: string;
     #transformers: { [sigil: string]: { serializer: (value: any) => any; parser: (token: any) => any } } = {};
 
+    #meta: M | null;
+
+    get metadata(): M | null {
+        return this.#meta;
+    }
+
+    set metadata(value: M | null) {
+        this.#meta = value;
+    }
+
     constructor(file: string) {
         this.#file = file;
+        this.#meta = null;
 
         // Built-in type support
         this.register<number, boolean>(

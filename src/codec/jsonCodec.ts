@@ -3,11 +3,21 @@ import { Codec } from "../types";
 
 type Jsonable = string | number | boolean | null | Jsonable[] | { [key: string]: Jsonable };
 
-export class JsonCodec<I extends Jsonable, D extends Jsonable> implements Codec<I, D> {
+export class JsonCodec<I extends Jsonable, D extends Jsonable, M extends Jsonable = null> implements Codec<I, D, M> {
     #file: string;
+    #meta: M | null;
 
     constructor(file: string) {
         this.#file = file;
+        this.#meta = null;
+    }
+
+    get metadata(): M | null {
+        return this.#meta;
+    }
+
+    set metadata(value: M | null) {
+        this.#meta = value;
     }
 
     async load(): Promise<D> {
