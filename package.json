@@ -4,6 +4,7 @@
     "description": "",
     "main": "index.js",
     "scripts": {
+        "dev": "tsx src/index.ts",
         "test": "vitest run",
         "test:watch": "vitest"
     },
@@ -15,11 +16,12 @@
         "@types/node": "^25.5.0",
         "eslint": "^9.39.4",
         "tsup": "^8.5.1",
+        "tsx": "^4.21.0",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.57.0",
         "vitest": "^4.1.0"
     },
     "dependencies": {
-        "@trh/symbols": "^2.0.0"
+        "@trh/symbols": "^2.0.1"
     }
 }

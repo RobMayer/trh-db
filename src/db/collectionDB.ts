@@ -24,6 +24,10 @@ export class CollectionDB<D> {
         this.codec = codec;
     }
 
+    async load() {
+        return this.codec.load();
+    }
+
     // --- Direct methods (bypass pipeline) ---
 
     get(target: CollectionId): CollectionMemberOf<D> | undefined;
