@@ -1,9 +1,10 @@
-export type Codec<I, D, M = null> = {
-    update: (items: I[], data: D) => Promise<void>;
-    insert: (items: I[], data: D) => Promise<void>;
-    delete: (items: I[], data: D) => Promise<void>;
-    load: () => Promise<D>;
-    flush: (data: D) => Promise<void>;
+export type Codec<D extends { id: string; data: any }, M = null> = {
+    update: (items: D[], data: { [id: string]: D }) => Promise<void>;
+    insert: (items: D[], data: { [id: string]: D }) => Promise<void>;
+    delete: (items: D[], data: { [id: string]: D }) => Promise<void>;
+    struct: (items: D[], data: { [id: string]: D }) => Promise<void>;
+    load: () => Promise<{ [id: string]: D }>;
+    flush: (data: { [id: string]: D }) => Promise<void>;
     metadata: M | null;
 };
 

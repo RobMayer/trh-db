@@ -16,11 +16,11 @@ type CollectionItemMeta = {
 
 export class CollectionDB<D> {
     private data: CollectionOf<D> = {};
-    private codec: Codec<CollectionMemberOf<D>, CollectionOf<D>>;
+    private codec: Codec<CollectionMemberOf<D>>;
     private indices = new IndexStore();
     private indexLenses: { [serializedKey: string]: Function } = {};
 
-    constructor(codec: Codec<CollectionMemberOf<D>, CollectionOf<D>>) {
+    constructor(codec: Codec<CollectionMemberOf<D>>) {
         this.codec = codec;
     }
 
