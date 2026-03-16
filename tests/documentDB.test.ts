@@ -6,8 +6,7 @@ import { IndexStore } from "../src/util/indices";
 type User = { name: string; age: number };
 
 function makeDB() {
-    const codec = new MemoryCodec<DocumentOf<User>>();
-    return new DocumentDB<User>(codec);
+    return new DocumentDB<User>(new MemoryCodec());
 }
 
 /** Reach into TS-private `indices` field for test assertions */

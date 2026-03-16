@@ -1,4 +1,4 @@
-import { Codec, ListOf, Updater } from "../types";
+import { Codec, DBMeta, ListOf, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
 import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf } from "../util/lens";
 
@@ -10,23 +10,17 @@ export type DocumentId = string;
 export type DocumentsOf<D> = { [id: DocumentId]: DocumentOf<D> };
 export type DocumentOf<D> = { id: DocumentId; data: D };
 
-type DocumentDBMeta<U> = {
-    version: number;
-    type: "documents";
-    user: U | null;
-};
-
 const TYPE = "documents";
 const VERSION = 1;
 
 export class DocumentDB<D, U = null> {
     private data: DocumentsOf<D> = {};
     private usermeta: U | null = null;
-    private codec: Codec<DocumentOf<D>, DocumentDBMeta<U>>;
+    private codec: Codec<DocumentOf<D>, DBMeta<U | null>>;
     private indices = new IndexStore();
     private indexLenses: { [serializedKey: string]: Function } = {};
 
-    constructor(codec: Codec<DocumentOf<D>, DocumentDBMeta<U>>) {
+    constructor(codec: Codec<DocumentOf<D>, DBMeta<U | null>>) {
         this.codec = codec;
         this.usermeta = null;
     }

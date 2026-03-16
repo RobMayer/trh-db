@@ -1,16 +1,10 @@
-import { Codec, ListOf, ListOr, TreeId, TreeItemOf, TreeOf, Updater } from "../types";
+import { Codec, DBMeta, ListOf, ListOr, TreeId, TreeItemOf, TreeOf, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
 import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf } from "../util/lens";
 
 // ------------------------------------------------------------
 // TreeDB<D>
 // ------------------------------------------------------------
-
-type TreeDBMeta<U> = {
-    version: number;
-    type: "tree";
-    user: U | null;
-};
 
 const TYPE = "tree";
 const VERSION = 1;
@@ -29,12 +23,13 @@ function detach<D>(data: TreeOf<D>, id: string): void {
 
 export class TreeDB<D, U = null> {
     private data: TreeOf<D> = {};
+    private rootIds = new Set<string>();
     private usermeta: U | null = null;
-    private codec: Codec<TreeItemOf<D>, TreeDBMeta<U>>;
+    private codec: Codec<TreeItemOf<D>, DBMeta<U | null>>;
     private indices = new IndexStore();
     private indexLenses: { [serializedKey: string]: Function } = {};
 
-    constructor(codec: Codec<TreeItemOf<D>, TreeDBMeta<U>>) {
+    constructor(codec: Codec<TreeItemOf<D>, DBMeta<U | null>>) {
         this.codec = codec;
         this.usermeta = null;
     }
@@ -42,6 +37,10 @@ export class TreeDB<D, U = null> {
     async load() {
         const [data, meta] = await this.codec.load();
         this.data = data;
+        this.rootIds.clear();
+        for (const item of Object.values(data)) {
+            if (item.parent === null) this.rootIds.add(item.id);
+        }
         this.usermeta = meta?.user ?? null;
         return this.usermeta;
     }
@@ -79,6 +78,8 @@ export class TreeDB<D, U = null> {
         if (parent !== null) {
             const parentItem = this.data[parent];
             if (parentItem) parentItem.children.push(id);
+        } else {
+            this.rootIds.add(id);
         }
 
         await this.codec.insert([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
@@ -129,10 +130,13 @@ export class TreeDB<D, U = null> {
         if (item.parent === newParent) return;
 
         detach(this.data, id);
+        this.rootIds.delete(id);
         item.parent = newParent;
         if (newParent !== null) {
             const newParentItem = this.data[newParent];
             if (newParentItem) newParentItem.children.push(id);
+        } else {
+            this.rootIds.add(id);
         }
 
         await this.codec.struct([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
@@ -156,11 +160,13 @@ export class TreeDB<D, U = null> {
                 const child = this.data[childId];
                 if (child) {
                     child.parent = null;
+                    this.rootIds.add(childId);
                     structChanged.push(child);
                 }
             }
 
             detach(this.data, id);
+            this.rootIds.delete(id);
             this.deindexRecord(id, item.data);
             delete this.data[id];
             removed.push(item);
@@ -193,12 +199,15 @@ export class TreeDB<D, U = null> {
                     if (parentId !== null) {
                         const parent = this.data[parentId];
                         if (parent) parent.children.push(childId);
+                    } else {
+                        this.rootIds.add(childId);
                     }
                     structChanged.push(child);
                 }
             }
 
             detach(this.data, id);
+            this.rootIds.delete(id);
             this.deindexRecord(id, item.data);
             delete this.data[id];
             removed.push(item);
@@ -221,6 +230,7 @@ export class TreeDB<D, U = null> {
             if (!item) continue;
 
             detach(this.data, id);
+            this.rootIds.delete(id);
             this.deindexRecord(id, item.data);
             delete this.data[id];
             removed.push(item);
@@ -256,6 +266,7 @@ export class TreeDB<D, U = null> {
             if (!item || item.children.length > 0) continue;
 
             detach(this.data, id);
+            this.rootIds.delete(id);
             this.deindexRecord(id, item.data);
             delete this.data[id];
             removed.push(item);
@@ -452,7 +463,7 @@ function tryIndexAccelerate<D>(predFn: Function, db: TreeDB<D, any>): Set<string
     return indexOp(indices, pathKey, operand) as Set<string>;
 }
 
-function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>): Item<D>[] {
+function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>, rootIds: Set<string>): Item<D>[] {
     const result: Item<D>[] = [];
     const seen = new Set<string>();
 
@@ -491,13 +502,11 @@ function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>):
             }
             case "siblings": {
                 const parentId = item.parent;
-                const siblingSource = parentId !== null ? data[parentId]?.children : Object.values(data).filter((n) => n.parent === null).map((n) => n.id);
-                if (siblingSource) {
-                    for (const sibId of siblingSource) {
-                        if (sibId === item.id) continue;
-                        const sib = data[sibId];
-                        if (sib) addUnique(sib);
-                    }
+                const siblingSource = parentId !== null ? data[parentId]?.children : rootIds;
+                for (const sibId of siblingSource) {
+                    if (sibId === item.id) continue;
+                    const sib = data[sibId];
+                    if (sib) addUnique(sib);
                 }
                 break;
             }
@@ -526,8 +535,9 @@ function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>):
                 break;
             }
             case "roots": {
-                for (const node of Object.values(data)) {
-                    if (node.parent === null) addUnique(node);
+                for (const id of rootIds) {
+                    const node = data[id];
+                    if (node) addUnique(node);
                 }
                 break;
             }
@@ -540,12 +550,13 @@ function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>):
 function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
     const ops: PipelineOp[] = [];
     const data = (db as any).data as TreeOf<D>;
+    const rootIds = (db as any).rootIds as Set<string>;
 
     function resolve(): Item<D>[] {
         switch (seed.type) {
             case "deep": {
                 const result: Item<D>[] = [];
-                const roots = Object.values(data).filter((item) => item.parent === null);
+                const roots = [...rootIds].map((id) => data[id]).filter(Boolean) as Item<D>[];
                 const stack = [...roots].reverse();
                 while (stack.length > 0) {
                     const current = stack.pop()!;
@@ -559,7 +570,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
             }
             case "wide": {
                 const result: Item<D>[] = [];
-                const roots = Object.values(data).filter((item) => item.parent === null);
+                const roots = [...rootIds].map((id) => data[id]).filter(Boolean) as Item<D>[];
                 const queue = [...roots];
                 while (queue.length > 0) {
                     const current = queue.shift()!;
@@ -585,8 +596,14 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 }
                 return Object.values(data).filter((item) => evalWhereForItem(seed.predFn, item, data));
             }
-            case "roots":
-                return Object.values(data).filter((item) => item.parent === null);
+            case "roots": {
+                const result: Item<D>[] = [];
+                for (const id of rootIds) {
+                    const item = data[id];
+                    if (item) result.push(item);
+                }
+                return result;
+            }
             case "ancestors": {
                 const result: Item<D>[] = [];
                 const seen = new Set<string>();
@@ -685,7 +702,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                     const item = data[id];
                     if (!item) continue;
                     const parentId = item.parent;
-                    const siblingSource = parentId !== null ? data[parentId]?.children : Object.values(data).filter((n) => n.parent === null).map((n) => n.id);
+                    const siblingSource: Iterable<string> | undefined = parentId !== null ? data[parentId]?.children : rootIds;
                     if (!siblingSource) continue;
                     for (const sibId of siblingSource) {
                         if (exclude.has(sibId) || seen.has(sibId)) continue;
@@ -749,7 +766,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 case "deepDescendants":
                 case "wideDescendants":
                 case "roots":
-                    items = resolveTraversal(items, op.type, data);
+                    items = resolveTraversal(items, op.type, data, rootIds);
                     isSingle = false;
                     break;
             }
