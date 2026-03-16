@@ -511,7 +511,7 @@ function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>, 
                 break;
             }
             case "deepDescendants": {
-                const stack = [...item.children];
+                const stack = [...item.children].reverse();
                 while (stack.length > 0) {
                     const currentId = stack.pop()!;
                     const current = data[currentId];
@@ -660,7 +660,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 for (const id of seed.ids) {
                     const item = data[id];
                     if (!item) continue;
-                    const stack = [...item.children];
+                    const stack = [...item.children].reverse();
                     while (stack.length > 0) {
                         const currentId = stack.pop()!;
                         if (seen.has(currentId)) continue;
