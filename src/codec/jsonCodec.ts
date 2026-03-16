@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { Codec } from "../types";
+import { Codec, DBMeta } from "../types";
 
 type Jsonable = string | number | boolean | null | Jsonable[] | { [key: string]: Jsonable };
 
-export class JsonCodec<D extends { id: string; data: any } & Jsonable, M extends Jsonable = null> implements Codec<D, M> {
+export class JsonCodec<D extends { id: string; data: any } & Jsonable, M extends DBMeta<Jsonable> & Jsonable = DBMeta<null>> implements Codec<D, M> {
     #file: string;
 
     constructor(file: string) {

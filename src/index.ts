@@ -5,7 +5,7 @@ type Resource = {
     name: string;
 };
 
-const resources = new DocumentDB<Resource>(new TrhCodec(".dev/resources.json"));
+const resources = new DocumentDB<Resource>(new TrhCodec(".dev/resources.trhdb"));
 
 const doTheThing = async () => {
     await resources.load();

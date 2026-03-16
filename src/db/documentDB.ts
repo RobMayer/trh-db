@@ -10,36 +10,41 @@ export type DocumentId = string;
 export type DocumentsOf<D> = { [id: DocumentId]: DocumentOf<D> };
 export type DocumentOf<D> = { id: DocumentId; data: D };
 
-type DocumentItemMeta = {
-    id: string;
+type DocumentDBMeta<U> = {
+    version: number;
+    type: "documents";
+    user: U | null;
 };
 
-export class DocumentDB<D, M = null> {
+const TYPE = "documents";
+const VERSION = 1;
+
+export class DocumentDB<D, U = null> {
     private data: DocumentsOf<D> = {};
-    private meta: M | null = null;
-    private codec: Codec<DocumentOf<D>, M>;
+    private usermeta: U | null = null;
+    private codec: Codec<DocumentOf<D>, DocumentDBMeta<U>>;
     private indices = new IndexStore();
     private indexLenses: { [serializedKey: string]: Function } = {};
 
-    constructor(codec: Codec<DocumentOf<D>, M>) {
+    constructor(codec: Codec<DocumentOf<D>, DocumentDBMeta<U>>) {
         this.codec = codec;
-        this.meta = null;
+        this.usermeta = null;
     }
 
     async load() {
         const [data, meta] = await this.codec.load();
         this.data = data;
-        this.meta = meta;
-        return meta;
+        this.usermeta = meta?.user ?? null;
+        return this.usermeta;
     }
 
     getMeta() {
-        return this.meta;
+        return this.usermeta;
     }
 
-    async setMeta(value: M) {
-        this.meta = value;
-        await this.codec.setMeta(value, this.data);
+    async setMeta(value: U) {
+        this.usermeta = value;
+        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, this.data);
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -95,7 +100,7 @@ export class DocumentDB<D, M = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.data, this.meta);
+        if (items.length > 0) await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
     }
 
     async insert(id: DocumentId, data: D): Promise<void>;
@@ -117,7 +122,7 @@ export class DocumentDB<D, M = null> {
             }
         }
 
-        await this.codec.insert(items, this.data, this.meta);
+        await this.codec.insert(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
     }
 
     async remove(target: DocumentId): Promise<void>;
@@ -143,7 +148,7 @@ export class DocumentDB<D, M = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.delete(items, this.data, this.meta);
+        if (items.length > 0) await this.codec.delete(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
     }
 
     // --- Index management ---

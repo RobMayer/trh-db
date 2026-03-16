@@ -1,5 +1,5 @@
 import { readFile, writeFile, appendFile } from "node:fs/promises";
-import { Codec } from "../types";
+import { Codec, DBMeta } from "../types";
 
 const OP_INSERT = "I"; // Full item — replay: result[id] = parsed
 const OP_UPDATE = "U"; // Data only — replay: result[id].data = parsed
@@ -25,7 +25,7 @@ const SIGIL_PREFIX = "\x10"; // Data-Link Escape
  *  the data is stored either in a raw json form, or in an object where the key starts with a SIGIL_PREFIX and then the name of the sigil, the value is then parsed using the registered parser for that sigil.
  */
 
-export class TrhCodec<D extends { id: string; data: any }, M = null> implements Codec<D, M> {
+export class TrhCodec<D extends { id: string; data: any }, M extends DBMeta<any> = DBMeta<null>> implements Codec<D, M> {
     #file: string;
     #transformers: { [sigil: string]: { serializer: (value: any) => any; parser: (token: any) => any } } = {};
 

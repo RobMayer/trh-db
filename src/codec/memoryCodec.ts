@@ -1,6 +1,6 @@
-import { Codec } from "../types";
+import { Codec, DBMeta } from "../types";
 
-export class MemoryCodec<D extends { id: string; data: any }, M = null> implements Codec<D, M> {
+export class MemoryCodec<D extends { id: string; data: any }, M extends DBMeta<any> = DBMeta<null>> implements Codec<D, M> {
     update: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
     insert: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};
     delete: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void> = async () => {};

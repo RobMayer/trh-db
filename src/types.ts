@@ -1,4 +1,4 @@
-export type Codec<D extends { id: string; data: any }, M = null> = {
+export type Codec<D extends { id: string; data: any }, M extends DBMeta<any> = DBMeta<null>> = {
     update: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
     insert: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
     delete: (items: D[], data: { [id: string]: D }, meta: M | null) => Promise<void>;
@@ -7,6 +7,8 @@ export type Codec<D extends { id: string; data: any }, M = null> = {
     flush: (data: { [id: string]: D }, meta: M | null) => Promise<void>;
     setMeta: (value: M | null, data: { [id: string]: D }) => Promise<void>;
 };
+
+export type DBMeta<U> = { user: U; type: string; version: number };
 
 export type ListOf<D> = Set<D> | D[];
 export type ListOr<D> = D | Set<D> | D[];
