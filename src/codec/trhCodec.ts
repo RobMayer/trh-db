@@ -25,6 +25,19 @@ const SIGIL_PREFIX = "\x10"; // Data-Link Escape
  *  the data is stored either in a raw json form, or in an object where the key starts with a SIGIL_PREFIX and then the name of the sigil, the value is then parsed using the registered parser for that sigil.
  */
 
+type Transformers = { [sigil: string]: { serializer: (value: any) => any; parser: (token: any) => any } };
+
+function createReplacer(transformers: Transformers) {
+    return function (this: any, key: string, value: unknown): unknown {
+        const original = this[key];
+        for (const [sigil, { serializer }] of Object.entries(transformers)) {
+            const encoded = serializer(original);
+            if (encoded !== undefined) return { [`${SIGIL_PREFIX}${sigil}`]: encoded };
+        }
+        return value;
+    };
+}
+
 export class TrhCodec<D extends { id: string; data: any }, M extends DBMeta<any> = DBMeta<null>> implements Codec<D, M> {
     #file: string;
     #transformers: { [sigil: string]: { serializer: (value: any) => any; parser: (token: any) => any } } = {};
@@ -40,7 +53,7 @@ export class TrhCodec<D extends { id: string; data: any }, M extends DBMeta<any>
         this.register<number, boolean>(
             "core.nan",
             () => NaN,
-            (v) => (isNaN(v) && typeof v === "number" ? true : undefined),
+            (v) => (typeof v === "number" && isNaN(v) ? true : undefined),
         );
         this.register<number, -1 | 1>(
             "core.inf",
@@ -87,13 +100,7 @@ export class TrhCodec<D extends { id: string; data: any }, M extends DBMeta<any>
 
     // --- Sigil-aware JSON serialization ---
 
-    #replacer = (_key: string, value: unknown): unknown => {
-        for (const [sigil, { serializer }] of Object.entries(this.#transformers)) {
-            const encoded = serializer(value);
-            if (encoded !== undefined) return { [`${SIGIL_PREFIX}${sigil}`]: encoded };
-        }
-        return value;
-    };
+    #replacer = createReplacer(this.#transformers);
 
     #reviver = (_key: string, value: unknown): unknown => {
         if (value !== null && typeof value === "object" && !Array.isArray(value)) {
