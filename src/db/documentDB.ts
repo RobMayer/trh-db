@@ -196,13 +196,35 @@ export class DocumentDB<D, U = null> {
     all: {
         (): DocumentPipeline<D, "multi">;
     } = (() => createPipeline(this, { type: "all" })) as any;
+
+    // --- Set operations ---
+
+    intersection(...pipelines: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
+        const sets = pipelines.map((p) => new Set<string>((p as any)[RESOLVE]().map((i: { id: string }) => i.id)));
+        const result = sets.reduce((acc, s) => { for (const id of acc) { if (!s.has(id)) acc.delete(id); } return acc; });
+        return createPipeline(this, { type: "ids", ids: [...result] }) as any;
+    }
+
+    union(...pipelines: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
+        const seen = new Set<string>();
+        for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as Item<D>).id);
+        return createPipeline(this, { type: "ids", ids: [...seen] }) as any;
+    }
+
+    exclusion(from: DocumentPipeline<D, any>, ...subtract: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
+        const base = new Set<string>((from as any)[RESOLVE]().map((i: { id: string }) => i.id));
+        for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as Item<D>).id);
+        return createPipeline(this, { type: "ids", ids: [...base] }) as any;
+    }
 }
 
 // ------------------------------------------------------------
 // Pipeline Runtime
 // ------------------------------------------------------------
 
-type PipelineSeed = { type: "all" } | { type: "select"; ids: string[] } | { type: "selectOne"; id: string } | { type: "where"; predFn: Function };
+type PipelineSeed = { type: "all" } | { type: "select"; ids: string[] } | { type: "selectOne"; id: string } | { type: "where"; predFn: Function } | { type: "ids"; ids: string[] };
+
+const RESOLVE = Symbol();
 
 type PipelineOp =
     | { type: "where"; predFn: Function }
@@ -271,6 +293,8 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
                 }
                 return Object.values(data).filter((item) => evalWhereForItem(seed.predFn, item));
             }
+            case "ids":
+                return seed.ids.map((id) => data[id]).filter(Boolean) as Item<D>[];
         }
     }
 
@@ -324,6 +348,10 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
     }
 
     const pipeline: any = {
+        [RESOLVE](): Item<D>[] {
+            const r = execute();
+            return Array.isArray(r) ? r : r ? [r] : [];
+        },
         // --- Chaining ---
         where(predFn: Function) {
             ops.push({ type: "where", predFn });
@@ -376,7 +404,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
         },
         async id() {
             const r = execute();
-            return Array.isArray(r) ? r.map((i: Item<D>) => i.id) : (r as Item<D> | undefined)?.id;
+            return Array.isArray(r) ? r.map((i: { id: string }) => i.id) : (r as Item<D> | undefined)?.id;
         },
 
         // --- Write terminals ---

@@ -684,3 +684,107 @@ describe("pipeline: distinct", () => {
         expect(result).toHaveLength(4);
     });
 });
+
+// ============================================================
+// Set operations
+// ============================================================
+
+describe("set operations", () => {
+    async function setDB() {
+        const db = makeDB();
+        await db.insert({ a: { name: "Alice", age: 30 }, b: { name: "Bob", age: 25 }, c: { name: "Charlie", age: 35 }, d: { name: "Diana", age: 20 } });
+        return db;
+    }
+
+    describe("intersection", () => {
+        it("returns items present in all pipelines", async () => {
+            const db = await setDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), ">", 20]),
+                db.where(($) => [$("age"), "<", 35]),
+            ).get();
+            const ids = (result as any[]).map((r) => r.id).sort();
+            expect(ids).toEqual(["a", "b"]);
+        });
+
+        it("returns empty when no overlap", async () => {
+            const db = await setDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), "<", 25]),
+                db.where(($) => [$("age"), ">", 30]),
+            ).get();
+            expect(result).toHaveLength(0);
+        });
+
+        it("supports chaining after intersection", async () => {
+            const db = await setDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), ">", 20]),
+                db.where(($) => [$("age"), "<", 35]),
+            ).sort(($) => $("age"), "asc").first().get();
+            expect((result as any).id).toBe("b");
+        });
+    });
+
+    describe("union", () => {
+        it("returns items present in any pipeline", async () => {
+            const db = await setDB();
+            const result = await db.union(
+                db.where(($) => [$("age"), "<", 25]),
+                db.where(($) => [$("age"), ">", 30]),
+            ).get();
+            const ids = (result as any[]).map((r) => r.id).sort();
+            expect(ids).toEqual(["c", "d"]);
+        });
+
+        it("deduplicates overlapping results", async () => {
+            const db = await setDB();
+            const result = await db.union(
+                db.where(($) => [$("age"), ">", 20]),
+                db.where(($) => [$("age"), "<", 35]),
+            ).get();
+            expect(result).toHaveLength(4);
+        });
+    });
+
+    describe("exclusion", () => {
+        it("returns items in first pipeline not in second", async () => {
+            const db = await setDB();
+            const result = await db.exclusion(
+                db.all(),
+                db.where(($) => [$("age"), ">", 25]),
+            ).get();
+            const ids = (result as any[]).map((r) => r.id).sort();
+            expect(ids).toEqual(["b", "d"]);
+        });
+
+        it("subtracts multiple pipelines", async () => {
+            const db = await setDB();
+            const result = await db.exclusion(
+                db.all(),
+                db.where(($) => [$("name"), "=", "Alice"]),
+                db.where(($) => [$("name"), "=", "Bob"]),
+            ).get();
+            const ids = (result as any[]).map((r) => r.id).sort();
+            expect(ids).toEqual(["c", "d"]);
+        });
+    });
+
+    describe("nesting", () => {
+        it("supports nested set operations", async () => {
+            const db = await setDB();
+            // union of (age > 30) and (intersection of age > 20 and age < 30)
+            // age > 30: Charlie(35)
+            // age > 20 AND age < 30: Bob(25)
+            const result = await db.union(
+                db.where(($) => [$("age"), ">", 30]),
+                db.intersection(
+                    db.where(($) => [$("age"), ">", 20]),
+                    db.where(($) => [$("age"), "<", 30]),
+                ),
+            ).get();
+            const ids = (result as any[]).map((r) => r.id).sort();
+            expect(ids).toEqual(["b", "c"]);
+        });
+    });
+});

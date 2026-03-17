@@ -869,3 +869,112 @@ describe("pipeline: distinct", () => {
         expect(result).toHaveLength(6);
     });
 });
+
+// ============================================================
+// Set operations
+// ============================================================
+
+describe("set operations", () => {
+    describe("intersection", () => {
+        it("returns items present in all pipelines", async () => {
+            const db = await seededDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), ">", 8]),
+                db.where(($) => [$("age"), "<", 35]),
+            ).get();
+            const ids = (result as any[]).map((r: any) => r.id).sort();
+            expect(ids).toEqual(["alice", "uncle"]);
+        });
+
+        it("returns empty when no overlap", async () => {
+            const db = await seededDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), "<", 8]),
+                db.where(($) => [$("age"), ">", 60]),
+            ).get();
+            expect(result).toHaveLength(0);
+        });
+
+        it("supports chaining after intersection", async () => {
+            const db = await seededDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), ">", 8]),
+                db.where(($) => [$("age"), "<", 35]),
+            ).sort(($) => $("age"), "asc").first().get();
+            expect((result as any).id).toBe("alice");
+        });
+    });
+
+    describe("union", () => {
+        it("returns items present in any pipeline", async () => {
+            const db = await seededDB();
+            const result = await db.union(
+                db.where(($) => [$("age"), "<", 8]),
+                db.where(($) => [$("age"), ">", 35]),
+            ).get();
+            const ids = (result as any[]).map((r: any) => r.id).sort();
+            expect(ids).toEqual(["charlie", "grandpa"]);
+        });
+
+        it("deduplicates overlapping results", async () => {
+            const db = await seededDB();
+            const result = await db.union(
+                db.where(($) => [$("age"), ">", 7]),
+                db.where(($) => [$("age"), "<", 60]),
+            ).get();
+            expect(result).toHaveLength(6);
+        });
+    });
+
+    describe("exclusion", () => {
+        it("returns items in first pipeline not in second", async () => {
+            const db = await seededDB();
+            const result = await db.exclusion(
+                db.deep(),
+                db.where(($) => [$("age"), ">", 10]),
+            ).get();
+            const ids = (result as any[]).map((r: any) => r.id).sort();
+            expect(ids).toEqual(["alice", "bob", "charlie"]);
+        });
+
+        it("subtracts multiple pipelines", async () => {
+            const db = await seededDB();
+            const result = await db.exclusion(
+                db.deep(),
+                db.roots(),
+                db.where(($) => [$("age"), "<", 10]),
+            ).get();
+            const ids = (result as any[]).map((r: any) => r.id).sort();
+            expect(ids).toEqual(["alice", "dad", "uncle"]);
+        });
+    });
+
+    describe("nesting", () => {
+        it("supports nested set operations", async () => {
+            const db = await seededDB();
+            // union of (roots) and (intersection of age > 7 and age < 32)
+            // roots: grandpa(60)
+            // age > 7 AND age < 32: alice(10), bob(8)
+            const result = await db.union(
+                db.roots(),
+                db.intersection(
+                    db.where(($) => [$("age"), ">", 7]),
+                    db.where(($) => [$("age"), "<", 32]),
+                ),
+            ).get();
+            const ids = (result as any[]).map((r: any) => r.id).sort();
+            expect(ids).toEqual(["alice", "bob", "grandpa"]);
+        });
+
+        it("supports traversal chaining after set operations", async () => {
+            const db = await seededDB();
+            const result = await db.intersection(
+                db.where(($) => [$("age"), ">", 30]),
+                db.where(($) => [$("age"), "<", 60]),
+            ).children().get();
+            // dad(35) and uncle(32) → their children: alice, bob, charlie
+            const ids = (result as any[]).map((r: any) => r.id).sort();
+            expect(ids).toEqual(["alice", "bob", "charlie"]);
+        });
+    });
+});

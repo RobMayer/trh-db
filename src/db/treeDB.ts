@@ -357,6 +357,26 @@ export class TreeDB<D, U = null> {
     siblings: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => createPipeline(this, { type: "siblings", ids: normalizeIds(target) })) as any;
+
+    // --- Set operations ---
+
+    intersection(...pipelines: TreePipeline<D, any>[]): TreePipeline<D, "multi"> {
+        const sets = pipelines.map((p) => new Set<string>((p as any)[RESOLVE]().map((i: { id: string }) => i.id)));
+        const result = sets.reduce((acc, s) => { for (const id of acc) { if (!s.has(id)) acc.delete(id); } return acc; });
+        return createPipeline(this, { type: "ids", ids: [...result] }) as any;
+    }
+
+    union(...pipelines: TreePipeline<D, any>[]): TreePipeline<D, "multi"> {
+        const seen = new Set<string>();
+        for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as TreeItemOf<D>).id);
+        return createPipeline(this, { type: "ids", ids: [...seen] }) as any;
+    }
+
+    exclusion(from: TreePipeline<D, any>, ...subtract: TreePipeline<D, any>[]): TreePipeline<D, "multi"> {
+        const base = new Set<string>((from as any)[RESOLVE]().map((i: { id: string }) => i.id));
+        for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as TreeItemOf<D>).id);
+        return createPipeline(this, { type: "ids", ids: [...base] }) as any;
+    }
 }
 
 // ------------------------------------------------------------
@@ -393,6 +413,8 @@ export type TreeMeta = {
 // Pipeline Runtime
 // ------------------------------------------------------------
 
+const RESOLVE = Symbol();
+
 type PipelineSeed =
     | { type: "select"; ids: string[] }
     | { type: "selectOne"; id: string }
@@ -406,7 +428,8 @@ type PipelineSeed =
     | { type: "parent"; ids: string[] }
     | { type: "deepDescendants"; ids: string[] }
     | { type: "wideDescendants"; ids: string[] }
-    | { type: "siblings"; ids: string[] };
+    | { type: "siblings"; ids: string[] }
+    | { type: "ids"; ids: string[] };
 
 type PipelineOp =
     | { type: "where"; predFn: Function }
@@ -714,6 +737,8 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 }
                 return result;
             }
+            case "ids":
+                return seed.ids.map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
         }
     }
 
@@ -778,6 +803,10 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
     }
 
     const pipeline: any = {
+        [RESOLVE](): TreeItemOf<D>[] {
+            const r = execute();
+            return Array.isArray(r) ? r : r ? [r] : [];
+        },
         // --- Chaining ---
         where(predFn: Function) {
             ops.push({ type: "where", predFn });
