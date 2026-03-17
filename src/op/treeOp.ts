@@ -1,6 +1,8 @@
-import { TreeItemOf, TreeOf } from "../types";
-
 // DO NOT USE IN PRODUCTION. THIS WILL BE REMOVED!
+
+type TreeId = string;
+type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
+type TreeItemOf<D> = { id: TreeId; parent: TreeId | null; children: TreeId[]; data: D };
 
 export namespace TreeOp {
     //#region query

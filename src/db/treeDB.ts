@@ -1,4 +1,4 @@
-import { Codec, DBMeta, ListOf, ListOr, TreeId, TreeItemOf, TreeOf, Updater } from "../types";
+import { Codec, DBMeta, ListOf, ListOr, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
 import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf } from "../util/lens";
 
@@ -9,7 +9,8 @@ import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult,
 const TYPE = "tree";
 const VERSION = 1;
 
-type Item<D> = TreeItemOf<D>;
+type TreeOf<D> = { [id: string]: TreeItemOf<D> };
+export type TreeItemOf<D> = { id: string; parent: string | null; children: string[]; data: D };
 
 function detach<D>(data: TreeOf<D>, id: string): void {
     const item = data[id];
@@ -56,13 +57,13 @@ export class TreeDB<D, U = null> {
 
     // --- Direct methods (bypass pipeline) ---
 
-    get(target: TreeId): Item<D> | undefined;
-    get(target: ListOf<TreeId>): Item<D>[];
-    get(target: TreeId | ListOf<TreeId>): Item<D> | undefined | Item<D>[] {
+    get(target: string): TreeItemOf<D> | undefined;
+    get(target: ListOf<string>): TreeItemOf<D>[];
+    get(target: string | ListOf<string>): TreeItemOf<D> | undefined | TreeItemOf<D>[] {
         if (typeof target === "string") {
             return this.data[target];
         }
-        const results: Item<D>[] = [];
+        const results: TreeItemOf<D>[] = [];
         for (const id of target) {
             const item = this.data[id];
             if (item) results.push(item);
@@ -70,8 +71,8 @@ export class TreeDB<D, U = null> {
         return results;
     }
 
-    async add(id: TreeId, data: D, parent: string | null): Promise<void> {
-        const item: Item<D> = { id, data, parent, children: [] };
+    async add(id: string, data: D, parent: string | null): Promise<void> {
+        const item: TreeItemOf<D> = { id, data, parent, children: [] };
         this.data[id] = item;
         this.indexRecord(id, data);
 
@@ -85,22 +86,22 @@ export class TreeDB<D, U = null> {
         await this.codec.insert([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
     }
 
-    async update(id: TreeId, data: D | ((prev: D, item: Item<D>) => D)): Promise<void>;
-    async update(payload: { [key: TreeId]: D }): Promise<void>;
-    async update(ids: ListOf<TreeId>, updater: (prev: D, item: Item<D>) => D): Promise<void>;
-    async update(idOrPayload: TreeId | { [key: TreeId]: D } | ListOf<TreeId>, dataOrUpdater?: D | ((prev: D, item: Item<D>) => D)): Promise<void> {
-        const items: Item<D>[] = [];
+    async update(id: string, data: D | ((prev: D, item: TreeItemOf<D>) => D)): Promise<void>;
+    async update(payload: { [key: string]: D }): Promise<void>;
+    async update(ids: ListOf<string>, updater: (prev: D, item: TreeItemOf<D>) => D): Promise<void>;
+    async update(idOrPayload: string | { [key: string]: D } | ListOf<string>, dataOrUpdater?: D | ((prev: D, item: TreeItemOf<D>) => D)): Promise<void> {
+        const items: TreeItemOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
             const existing = this.data[idOrPayload];
             if (!existing) return;
-            const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, item: Item<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
+            const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
             this.deindexRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexRecord(idOrPayload, newData);
             items.push(existing);
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
-            const updater = dataOrUpdater as (prev: D, item: Item<D>) => D;
+            const updater = dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D;
             for (const id of idOrPayload) {
                 const existing = this.data[id];
                 if (!existing) continue;
@@ -124,7 +125,7 @@ export class TreeDB<D, U = null> {
         if (items.length > 0) await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
     }
 
-    async move(id: TreeId, newParent: string | null): Promise<void> {
+    async move(id: string, newParent: string | null): Promise<void> {
         const item = this.data[id];
         if (!item) return;
         if (item.parent === newParent) return;
@@ -144,12 +145,12 @@ export class TreeDB<D, U = null> {
 
     // --- Remove variants ---
 
-    async pluck(target: TreeId): Promise<Item<D> | undefined>;
-    async pluck(target: ListOf<TreeId>): Promise<Item<D>[]>;
-    async pluck(target: TreeId | ListOf<TreeId>): Promise<Item<D> | undefined | Item<D>[]> {
+    async pluck(target: string): Promise<TreeItemOf<D> | undefined>;
+    async pluck(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
+    async pluck(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
-        const removed: Item<D>[] = [];
-        const structChanged: Item<D>[] = [];
+        const removed: TreeItemOf<D>[] = [];
+        const structChanged: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
             const item = this.data[id];
@@ -178,12 +179,12 @@ export class TreeDB<D, U = null> {
         return typeof target === "string" ? removed[0] : removed;
     }
 
-    async splice(target: TreeId): Promise<Item<D> | undefined>;
-    async splice(target: ListOf<TreeId>): Promise<Item<D>[]>;
-    async splice(target: TreeId | ListOf<TreeId>): Promise<Item<D> | undefined | Item<D>[]> {
+    async splice(target: string): Promise<TreeItemOf<D> | undefined>;
+    async splice(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
+    async splice(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
-        const removed: Item<D>[] = [];
-        const structChanged: Item<D>[] = [];
+        const removed: TreeItemOf<D>[] = [];
+        const structChanged: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
             const item = this.data[id];
@@ -219,11 +220,11 @@ export class TreeDB<D, U = null> {
         return typeof target === "string" ? removed[0] : removed;
     }
 
-    async prune(target: TreeId): Promise<Item<D> | undefined>;
-    async prune(target: ListOf<TreeId>): Promise<Item<D>[]>;
-    async prune(target: TreeId | ListOf<TreeId>): Promise<Item<D> | undefined | Item<D>[]> {
+    async prune(target: string): Promise<TreeItemOf<D> | undefined>;
+    async prune(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
+    async prune(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
-        const removed: Item<D>[] = [];
+        const removed: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
             const item = this.data[id];
@@ -255,11 +256,11 @@ export class TreeDB<D, U = null> {
         return typeof target === "string" ? removed[0] : removed;
     }
 
-    async trim(target: TreeId): Promise<Item<D> | undefined>;
-    async trim(target: ListOf<TreeId>): Promise<Item<D>[]>;
-    async trim(target: TreeId | ListOf<TreeId>): Promise<Item<D> | undefined | Item<D>[]> {
+    async trim(target: string): Promise<TreeItemOf<D> | undefined>;
+    async trim(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
+    async trim(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
-        const removed: Item<D>[] = [];
+        const removed: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
             const item = this.data[id];
@@ -319,9 +320,9 @@ export class TreeDB<D, U = null> {
         <T>(lens: ($: SelectorLens<D> & TreeMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
     } = ((predFn: Function) => createPipeline(this, { type: "where", predFn })) as any;
     select: {
-        (target: TreeId): TreePipeline<D, "single">;
-        (target: ListOf<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: TreeId | ListOf<TreeId>) => {
+        (target: string): TreePipeline<D, "single">;
+        (target: ListOf<string>): TreePipeline<D, "multi">;
+    } = ((target: string | ListOf<string>) => {
         if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
         return createPipeline(this, { type: "select", ids: [...target] });
     }) as any;
@@ -335,27 +336,27 @@ export class TreeDB<D, U = null> {
         (): TreePipeline<D, "multi">;
     } = (() => createPipeline(this, { type: "wide" })) as any;
     ancestors: {
-        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "ancestors", ids: normalizeIds(target) })) as any;
+        (target: ListOr<string>): TreePipeline<D, "multi">;
+    } = ((target: ListOr<string>) => createPipeline(this, { type: "ancestors", ids: normalizeIds(target) })) as any;
     children: {
-        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "children", ids: normalizeIds(target) })) as any;
+        (target: ListOr<string>): TreePipeline<D, "multi">;
+    } = ((target: ListOr<string>) => createPipeline(this, { type: "children", ids: normalizeIds(target) })) as any;
     parent: {
-        (target: TreeId): TreePipeline<D, "single">;
-        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: TreeId | ListOr<TreeId>) => {
+        (target: string): TreePipeline<D, "single">;
+        (target: ListOr<string>): TreePipeline<D, "multi">;
+    } = ((target: string | ListOr<string>) => {
         if (typeof target === "string") return createPipeline(this, { type: "parentOne", id: target });
         return createPipeline(this, { type: "parent", ids: normalizeIds(target) });
     }) as any;
     deepDescendants: {
-        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "deepDescendants", ids: normalizeIds(target) })) as any;
+        (target: ListOr<string>): TreePipeline<D, "multi">;
+    } = ((target: ListOr<string>) => createPipeline(this, { type: "deepDescendants", ids: normalizeIds(target) })) as any;
     wideDescendants: {
-        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "wideDescendants", ids: normalizeIds(target) })) as any;
+        (target: ListOr<string>): TreePipeline<D, "multi">;
+    } = ((target: ListOr<string>) => createPipeline(this, { type: "wideDescendants", ids: normalizeIds(target) })) as any;
     siblings: {
-        (target: ListOr<TreeId>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<TreeId>) => createPipeline(this, { type: "siblings", ids: normalizeIds(target) })) as any;
+        (target: ListOr<string>): TreePipeline<D, "multi">;
+    } = ((target: ListOr<string>) => createPipeline(this, { type: "siblings", ids: normalizeIds(target) })) as any;
 }
 
 // ------------------------------------------------------------
@@ -433,11 +434,11 @@ const INDEX_OPS: { [op: string]: (idx: IndexStore, key: string, operand: unknown
     ">=<": (idx, key, lo, hi) => idx.range(key, lo, hi, true, false),
 };
 
-function metaFor<D>(item: Item<D>, data: TreeOf<D>): { ID: string; PARENT: string | null; CHILDREN: string[]; DEPTH: number } {
+function metaFor<D>(item: TreeItemOf<D>, data: TreeOf<D>): { ID: string; PARENT: string | null; CHILDREN: string[]; DEPTH: number } {
     return { ID: item.id, PARENT: item.parent, CHILDREN: item.children, DEPTH: depthOf(data, item.id) };
 }
 
-function evalWhereForItem<D>(predFn: Function, item: Item<D>, data: TreeOf<D>): boolean {
+function evalWhereForItem<D>(predFn: Function, item: TreeItemOf<D>, data: TreeOf<D>): boolean {
     return Lens.match(item.data, predFn, metaFor(item, data));
 }
 
@@ -463,11 +464,11 @@ function tryIndexAccelerate<D>(predFn: Function, db: TreeDB<D, any>): Set<string
     return indexOp(indices, pathKey, operand) as Set<string>;
 }
 
-function resolveTraversal<D>(items: Item<D>[], opType: string, data: TreeOf<D>, rootIds: Set<string>): Item<D>[] {
-    const result: Item<D>[] = [];
+function resolveTraversal<D>(items: TreeItemOf<D>[], opType: string, data: TreeOf<D>, rootIds: Set<string>): TreeItemOf<D>[] {
+    const result: TreeItemOf<D>[] = [];
     const seen = new Set<string>();
 
-    function addUnique(item: Item<D>) {
+    function addUnique(item: TreeItemOf<D>) {
         if (!seen.has(item.id)) {
             seen.add(item.id);
             result.push(item);
@@ -552,11 +553,11 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
     const data = (db as any).data as TreeOf<D>;
     const rootIds = (db as any).rootIds as Set<string>;
 
-    function resolve(): Item<D>[] {
+    function resolve(): TreeItemOf<D>[] {
         switch (seed.type) {
             case "deep": {
-                const result: Item<D>[] = [];
-                const roots = [...rootIds].map((id) => data[id]).filter(Boolean) as Item<D>[];
+                const result: TreeItemOf<D>[] = [];
+                const roots = [...rootIds].map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
                 const stack = [...roots].reverse();
                 while (stack.length > 0) {
                     const current = stack.pop()!;
@@ -569,8 +570,8 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return result;
             }
             case "wide": {
-                const result: Item<D>[] = [];
-                const roots = [...rootIds].map((id) => data[id]).filter(Boolean) as Item<D>[];
+                const result: TreeItemOf<D>[] = [];
+                const roots = [...rootIds].map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
                 const queue = [...roots];
                 while (queue.length > 0) {
                     const current = queue.shift()!;
@@ -587,17 +588,17 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return item ? [item] : [];
             }
             case "select":
-                return seed.ids.map((id) => data[id]).filter(Boolean) as Item<D>[];
+                return seed.ids.map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
             case "where": {
                 const indexed = tryIndexAccelerate(seed.predFn, db);
                 if (indexed) {
-                    const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as Item<D>[];
+                    const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
                     return candidates.filter((item) => evalWhereForItem(seed.predFn, item, data));
                 }
                 return Object.values(data).filter((item) => evalWhereForItem(seed.predFn, item, data));
             }
             case "roots": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 for (const id of rootIds) {
                     const item = data[id];
                     if (item) result.push(item);
@@ -605,7 +606,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return result;
             }
             case "ancestors": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
                     let current = data[id]?.parent ?? null;
@@ -621,7 +622,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return result;
             }
             case "children": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
                     const item = data[id];
@@ -642,7 +643,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return p ? [p] : [];
             }
             case "parent": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
                     const item = data[id];
@@ -655,7 +656,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return result;
             }
             case "deepDescendants": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
                     const item = data[id];
@@ -676,7 +677,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return result;
             }
             case "wideDescendants": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 const seen = new Set<string>();
                 for (const id of seed.ids) {
                     const item = data[id];
@@ -695,7 +696,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                 return result;
             }
             case "siblings": {
-                const result: Item<D>[] = [];
+                const result: TreeItemOf<D>[] = [];
                 const seen = new Set<string>();
                 const exclude = new Set(seed.ids);
                 for (const id of seed.ids) {
@@ -716,7 +717,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
         }
     }
 
-    function execute(): Item<D>[] | Item<D> | undefined {
+    function execute(): TreeItemOf<D>[] | TreeItemOf<D> | undefined {
         let items = resolve();
         let isSingle = seed.type === "selectOne" || seed.type === "parentOne";
 
@@ -859,7 +860,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
         },
         async id() {
             const r = execute();
-            return Array.isArray(r) ? r.map((i: Item<D>) => i.id) : (r as Item<D> | undefined)?.id;
+            return Array.isArray(r) ? r.map((i: TreeItemOf<D>) => i.id) : (r as TreeItemOf<D> | undefined)?.id;
         },
 
         // --- Write terminals ---
@@ -870,7 +871,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
 
             if (typeof args[0] === "function" && args.length === 1) {
                 const ids = items.map((i) => i.id);
-                const updater = args[0] as (prev: D, item: Item<D>) => D;
+                const updater = args[0] as (prev: D, item: TreeItemOf<D>) => D;
                 await db.update(ids, updater);
             } else if (typeof args[0] === "function") {
                 const lensFn = args[0];
@@ -881,7 +882,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
                     return prev;
                 });
             } else {
-                const payload: { [key: TreeId]: D } = {};
+                const payload: { [key: string]: D } = {};
                 for (const item of items) payload[item.id] = args[0] as D;
                 await db.update(payload);
             }
@@ -911,7 +912,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
             if (items.length > 0) await db.trim(items.map((i) => i.id));
             return result;
         },
-        async move(newParent: string | null | ((item: Item<D>) => string | null)) {
+        async move(newParent: string | null | ((item: TreeItemOf<D>) => string | null)) {
             const result = execute();
             const items = Array.isArray(result) ? result : result ? [result] : [];
             for (const item of items) {
@@ -930,7 +931,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
 // ------------------------------------------------------------
 
 type Cardinality = "single" | "multi";
-type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | undefined : Item<D>[];
+type TerminalResult<D, C extends Cardinality> = C extends "single" ? TreeItemOf<D> | undefined : TreeItemOf<D>[];
 
 // ------------------------------------------------------------
 // Terminals
@@ -944,15 +945,15 @@ interface TreeTerminals<D, C extends Cardinality> {
     id(): Promise<C extends "multi" ? string[] : string | undefined>;
 
     // --- Write terminals (whole-data) ---
-    update(updater: Updater<D, Item<D>>): Promise<TerminalResult<D, C>>;
+    update(updater: Updater<D, TreeItemOf<D>>): Promise<TerminalResult<D, C>>;
     pluck(): Promise<TerminalResult<D, C>>;
     splice(): Promise<TerminalResult<D, C>>;
     prune(): Promise<TerminalResult<D, C>>;
     trim(): Promise<TerminalResult<D, C>>;
-    move(newParent: string | null | ((item: Item<D>) => string | null)): Promise<TerminalResult<D, C>>;
+    move(newParent: string | null | ((item: TreeItemOf<D>) => string | null)): Promise<TerminalResult<D, C>>;
 
     // --- Write terminals (lens-targeted) ---
-    update<R>(lens: ($: MutatorLens<D>) => MutatorLensOf<R>, updater: Updater<R, Item<D>>): Promise<TerminalResult<D, C>>;
+    update<R>(lens: ($: MutatorLens<D>) => MutatorLensOf<R>, updater: Updater<R, TreeItemOf<D>>): Promise<TerminalResult<D, C>>;
 }
 
 // ------------------------------------------------------------

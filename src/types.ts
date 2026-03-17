@@ -14,13 +14,6 @@ export type ListOf<D> = Set<D> | D[];
 export type ListOr<D> = D | Set<D> | D[];
 export type Updater<T, C> = T | ((prev: T, context: C) => T);
 
-export type TreeId = string;
-export type TreeOf<D> = { [id: TreeId]: TreeItemOf<D> };
-export type TreeItemOf<D> = { id: TreeId; parent: TreeId | null; children: TreeId[]; data: D };
-
-export type TreeSelector<D> = any; // lens-like interface for selecting members(s) in a tree
-export type TreeLens<D> = any; // lens-like interface for selecting members or properties thereof in a tree
-
 export type GraphNodeId = string;
 export type GraphLinkId = string;
 export type GraphSocketId = string;
