@@ -9,7 +9,7 @@ const resources = new DocumentDB<Resource>(new TrhCodec(".dev/resources.trhdb"))
 
 const doTheThing = async () => {
     await resources.load();
-    await resources.insert("abc123", { name: "Bob" });
+    await resources.insert({ name: "Bob" });
     const bob = await resources.where(($) => [$("name"), "=", "Bob"]).get();
 
     console.log(bob);

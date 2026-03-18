@@ -71,35 +71,58 @@ export class TreeDB<D, U = null> {
         return results;
     }
 
-    async add(id: string, data: D, parent: string | null): Promise<void> {
-        const item: TreeItemOf<D> = { id, data, parent, children: [] };
-        this.data[id] = item;
-        this.indexRecord(id, data);
+    async add(data: D, parent: string | null): Promise<TreeItemOf<D>>;
+    async add(items: { data: D; parent: string | null }[]): Promise<TreeItemOf<D>[]>;
+    async add(dataOrItems: D | { data: D; parent: string | null }[], parent?: string | null): Promise<TreeItemOf<D> | TreeItemOf<D>[]> {
+        const created: TreeItemOf<D>[] = [];
 
-        if (parent !== null) {
-            const parentItem = this.data[parent];
-            if (parentItem) parentItem.children.push(id);
+        if (Array.isArray(dataOrItems)) {
+            for (const entry of dataOrItems) {
+                const id = crypto.randomUUID();
+                const item: TreeItemOf<D> = { id, data: entry.data, parent: entry.parent, children: [] };
+                this.data[id] = item;
+                this.indexRecord(id, entry.data);
+                if (entry.parent !== null) {
+                    const parentItem = this.data[entry.parent];
+                    if (parentItem) parentItem.children.push(id);
+                } else {
+                    this.rootIds.add(id);
+                }
+                created.push(item);
+            }
         } else {
-            this.rootIds.add(id);
+            const id = crypto.randomUUID();
+            const item: TreeItemOf<D> = { id, data: dataOrItems, parent: parent!, children: [] };
+            this.data[id] = item;
+            this.indexRecord(id, dataOrItems);
+            if (parent !== null) {
+                const parentItem = this.data[parent!];
+                if (parentItem) parentItem.children.push(id);
+            } else {
+                this.rootIds.add(id);
+            }
+            created.push(item);
         }
 
-        await this.codec.insert([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.codec.insert(created, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        return Array.isArray(dataOrItems) ? created : created[0];
     }
 
-    async update(id: string, data: D | ((prev: D, item: TreeItemOf<D>) => D)): Promise<void>;
-    async update(payload: { [key: string]: D }): Promise<void>;
-    async update(ids: ListOf<string>, updater: (prev: D, item: TreeItemOf<D>) => D): Promise<void>;
-    async update(idOrPayload: string | { [key: string]: D } | ListOf<string>, dataOrUpdater?: D | ((prev: D, item: TreeItemOf<D>) => D)): Promise<void> {
+    async update(id: string, data: D | ((prev: D, item: TreeItemOf<D>) => D)): Promise<TreeItemOf<D> | undefined>;
+    async update(payload: { [key: string]: D }): Promise<TreeItemOf<D>[]>;
+    async update(ids: ListOf<string>, updater: (prev: D, item: TreeItemOf<D>) => D): Promise<TreeItemOf<D>[]>;
+    async update(idOrPayload: string | { [key: string]: D } | ListOf<string>, dataOrUpdater?: D | ((prev: D, item: TreeItemOf<D>) => D)): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const items: TreeItemOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
             const existing = this.data[idOrPayload];
-            if (!existing) return;
+            if (!existing) return undefined;
             const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
             this.deindexRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexRecord(idOrPayload, newData);
-            items.push(existing);
+            await this.codec.update([existing], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+            return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D;
             for (const id of idOrPayload) {
@@ -123,12 +146,13 @@ export class TreeDB<D, U = null> {
         }
 
         if (items.length > 0) await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        return items;
     }
 
-    async move(id: string, newParent: string | null): Promise<void> {
+    async move(id: string, newParent: string | null): Promise<TreeItemOf<D> | undefined> {
         const item = this.data[id];
-        if (!item) return;
-        if (item.parent === newParent) return;
+        if (!item) return undefined;
+        if (item.parent === newParent) return item;
 
         detach(this.data, id);
         this.rootIds.delete(id);
@@ -141,6 +165,7 @@ export class TreeDB<D, U = null> {
         }
 
         await this.codec.struct([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        return item;
     }
 
     // --- Remove variants ---

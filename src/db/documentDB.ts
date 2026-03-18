@@ -58,22 +58,24 @@ export class DocumentDB<D, U = null> {
         return results;
     }
 
-    async update(id: DocumentId, data: D | ((prev: D, meta: Item<D>) => D)): Promise<void>;
-    async update(payload: { [key: DocumentId]: D }): Promise<void>;
-    async update(ids: ListOf<DocumentId>, updater: (prev: D, meta: Item<D>) => D): Promise<void>;
-    async update(idOrPayload: DocumentId | { [key: DocumentId]: D } | ListOf<DocumentId>, dataOrUpdater?: D | ((prev: D, meta: Item<D>) => D)): Promise<void> {
+    async update(id: DocumentId, data: D | ((prev: D, meta: DocumentOf<D>) => D)): Promise<DocumentOf<D> | undefined>;
+    async update(payload: { [key: DocumentId]: D }): Promise<DocumentOf<D>[]>;
+    async update(ids: ListOf<DocumentId>, updater: (prev: D, meta: DocumentOf<D>) => D): Promise<DocumentOf<D>[]>;
+    async update(idOrPayload: DocumentId | { [key: DocumentId]: D } | ListOf<DocumentId>, dataOrUpdater?: D | ((prev: D, meta: DocumentOf<D>) => D)): Promise<DocumentOf<D> | undefined | DocumentOf<D>[]> {
         const items: DocumentOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
             const existing = this.data[idOrPayload];
-            if (!existing) return;
-            const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, meta: Item<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
+            if (!existing) return undefined;
+            const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, meta: DocumentOf<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
             this.deindexRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexRecord(idOrPayload, newData);
             items.push(existing);
+            await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+            return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
-            const updater = dataOrUpdater as (prev: D, meta: Item<D>) => D;
+            const updater = dataOrUpdater as (prev: D, meta: DocumentOf<D>) => D;
             for (const id of idOrPayload) {
                 const existing = this.data[id];
                 if (!existing) continue;
@@ -95,33 +97,37 @@ export class DocumentDB<D, U = null> {
         }
 
         if (items.length > 0) await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        return items;
     }
 
-    async insert(id: DocumentId, data: D): Promise<void>;
-    async insert(payload: { [id: DocumentId]: D }): Promise<void>;
-    async insert(idOrPayload: DocumentId | { [id: DocumentId]: D }, data?: D): Promise<void> {
+    async insert(data: D): Promise<DocumentOf<D>>;
+    async insert(data: D[]): Promise<DocumentOf<D>[]>;
+    async insert(data: D | D[]): Promise<DocumentOf<D> | DocumentOf<D>[]> {
         const items: DocumentOf<D>[] = [];
 
-        if (typeof idOrPayload === "string") {
-            const member: DocumentOf<D> = { id: idOrPayload, data: data! };
-            this.data[idOrPayload] = member;
-            this.indexRecord(idOrPayload, data!);
-            items.push(member);
-        } else {
-            for (const [id, d] of Object.entries(idOrPayload)) {
-                const member: DocumentOf<D> = { id, data: d as D };
+        if (Array.isArray(data)) {
+            for (const d of data) {
+                const id = crypto.randomUUID();
+                const member: DocumentOf<D> = { id, data: d };
                 this.data[id] = member;
-                this.indexRecord(id, d as D);
+                this.indexRecord(id, d);
                 items.push(member);
             }
+        } else {
+            const id = crypto.randomUUID();
+            const member: DocumentOf<D> = { id, data };
+            this.data[id] = member;
+            this.indexRecord(id, data);
+            items.push(member);
         }
 
         await this.codec.insert(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        return Array.isArray(data) ? items : items[0];
     }
 
-    async remove(target: DocumentId): Promise<void>;
-    async remove(target: ListOf<DocumentId>): Promise<void>;
-    async remove(target: DocumentId | ListOf<DocumentId>): Promise<void> {
+    async remove(target: DocumentId): Promise<DocumentOf<D> | undefined>;
+    async remove(target: ListOf<DocumentId>): Promise<DocumentOf<D>[]>;
+    async remove(target: DocumentId | ListOf<DocumentId>): Promise<DocumentOf<D> | undefined | DocumentOf<D>[]> {
         const items: DocumentOf<D>[] = [];
 
         if (typeof target === "string") {
@@ -129,8 +135,9 @@ export class DocumentDB<D, U = null> {
             if (item) {
                 this.deindexRecord(target, item.data);
                 delete this.data[target];
-                items.push(item);
+                await this.codec.delete([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
             }
+            return item;
         } else {
             for (const id of target) {
                 const item = this.data[id];
@@ -143,6 +150,7 @@ export class DocumentDB<D, U = null> {
         }
 
         if (items.length > 0) await this.codec.delete(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        return items;
     }
 
     // --- Index management ---
@@ -201,19 +209,24 @@ export class DocumentDB<D, U = null> {
 
     intersection(...pipelines: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
         const sets = pipelines.map((p) => new Set<string>((p as any)[RESOLVE]().map((i: { id: string }) => i.id)));
-        const result = sets.reduce((acc, s) => { for (const id of acc) { if (!s.has(id)) acc.delete(id); } return acc; });
+        const result = sets.reduce((acc, s) => {
+            for (const id of acc) {
+                if (!s.has(id)) acc.delete(id);
+            }
+            return acc;
+        });
         return createPipeline(this, { type: "ids", ids: [...result] }) as any;
     }
 
     union(...pipelines: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
         const seen = new Set<string>();
-        for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as Item<D>).id);
+        for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as DocumentOf<D>).id);
         return createPipeline(this, { type: "ids", ids: [...seen] }) as any;
     }
 
     exclusion(from: DocumentPipeline<D, any>, ...subtract: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
         const base = new Set<string>((from as any)[RESOLVE]().map((i: { id: string }) => i.id));
-        for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as Item<D>).id);
+        for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as DocumentOf<D>).id);
         return createPipeline(this, { type: "ids", ids: [...base] }) as any;
     }
 }
@@ -245,7 +258,7 @@ const INDEX_OPS: { [op: string]: (idx: IndexStore, key: string, operand: unknown
     ">=<": (idx, key, lo, hi) => idx.range(key, lo, hi, true, false),
 };
 
-function evalWhereForItem<D>(predFn: Function, item: Item<D>): boolean {
+function evalWhereForItem<D>(predFn: Function, item: DocumentOf<D>): boolean {
     return Lens.match(item.data, predFn, { ID: item.id });
 }
 
@@ -275,7 +288,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
     const ops: PipelineOp[] = [];
     const data = (db as any).data as DocumentsOf<D>;
 
-    function resolve(): Item<D>[] {
+    function resolve(): DocumentOf<D>[] {
         switch (seed.type) {
             case "all":
                 return Object.values(data);
@@ -284,21 +297,21 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
                 return item ? [item] : [];
             }
             case "select":
-                return seed.ids.map((id) => data[id]).filter(Boolean) as Item<D>[];
+                return seed.ids.map((id) => data[id]).filter(Boolean) as DocumentOf<D>[];
             case "where": {
                 const indexed = tryIndexAccelerate(seed.predFn, db);
                 if (indexed) {
-                    const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as Item<D>[];
+                    const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as DocumentOf<D>[];
                     return candidates.filter((item) => evalWhereForItem(seed.predFn, item));
                 }
                 return Object.values(data).filter((item) => evalWhereForItem(seed.predFn, item));
             }
             case "ids":
-                return seed.ids.map((id) => data[id]).filter(Boolean) as Item<D>[];
+                return seed.ids.map((id) => data[id]).filter(Boolean) as DocumentOf<D>[];
         }
     }
 
-    function execute(): Item<D>[] | Item<D> | undefined {
+    function execute(): DocumentOf<D>[] | DocumentOf<D> | undefined {
         let items = resolve();
         let isSingle = seed.type === "selectOne";
 
@@ -348,7 +361,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
     }
 
     const pipeline: any = {
-        [RESOLVE](): Item<D>[] {
+        [RESOLVE](): DocumentOf<D>[] {
             const r = execute();
             return Array.isArray(r) ? r : r ? [r] : [];
         },
@@ -404,7 +417,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
         },
         async id() {
             const r = execute();
-            return Array.isArray(r) ? r.map((i: { id: string }) => i.id) : (r as Item<D> | undefined)?.id;
+            return Array.isArray(r) ? r.map((i: { id: string }) => i.id) : (r as DocumentOf<D> | undefined)?.id;
         },
 
         // --- Write terminals ---
@@ -415,7 +428,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
 
             if (typeof args[0] === "function" && args.length === 1) {
                 const ids = items.map((i) => i.id);
-                const updater = args[0] as (prev: D, meta: Item<D>) => D;
+                const updater = args[0] as (prev: D, meta: DocumentOf<D>) => D;
                 await db.update(ids, updater);
             } else if (typeof args[0] === "function") {
                 const lensFn = args[0];
@@ -459,9 +472,8 @@ export type DocumentMeta = {
 // Pipeline Interface
 // ------------------------------------------------------------
 
-type Item<D> = DocumentOf<D>;
 type Cardinality = "single" | "multi";
-type TerminalResult<D, C extends Cardinality> = C extends "single" ? Item<D> | undefined : Item<D>[];
+type TerminalResult<D, C extends Cardinality> = C extends "single" ? DocumentOf<D> | undefined : DocumentOf<D>[];
 
 // ------------------------------------------------------------
 // Terminals
@@ -475,11 +487,11 @@ interface DocumentTerminals<D, C extends Cardinality> {
     id(): Promise<C extends "multi" ? string[] : string | undefined>;
 
     // --- Write terminals (whole-data) ---
-    update(updater: Updater<D, Item<D>>): Promise<TerminalResult<D, C>>;
+    update(updater: Updater<D, DocumentOf<D>>): Promise<TerminalResult<D, C>>;
     remove(): Promise<TerminalResult<D, C>>;
 
     // --- Write terminals (lens-targeted) ---
-    update<R>(lens: ($: MutatorLens<D>) => MutatorLensOf<R>, updater: Updater<R, Item<D>>): Promise<TerminalResult<D, C>>;
+    update<R>(lens: ($: MutatorLens<D>) => MutatorLensOf<R>, updater: Updater<R, DocumentOf<D>>): Promise<TerminalResult<D, C>>;
 }
 
 // ------------------------------------------------------------
