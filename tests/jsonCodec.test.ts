@@ -40,7 +40,7 @@ describe("load", () => {
             b: { id: "b", data: { name: "Bob", age: 25 } },
         };
         const meta: Meta = { user: null, type: "documents", version: 1 };
-        await codec.flush(items, meta);
+        await codec.flush(() => items, meta);
         const [loaded, loadedMeta] = await codec.load();
         expect(loaded).toEqual(items);
         expect(loadedMeta).toEqual(meta);
@@ -56,7 +56,7 @@ describe("flush", () => {
         const codec = makeCodec("flush-envelope");
         const items = { a: { id: "a", data: { name: "Alice", age: 30 } } };
         const meta: Meta = { user: null, type: "test", version: 1 };
-        await codec.flush(items, meta);
+        await codec.flush(() => items, meta);
         const raw = await readFile(join(TMP, "flush-envelope.json"), "utf-8");
         const parsed = JSON.parse(raw);
         expect(parsed).toEqual({ meta, data: items });
@@ -64,7 +64,7 @@ describe("flush", () => {
 
     it("writes null meta when no meta provided", async () => {
         const codec = makeCodec("flush-null-meta");
-        await codec.flush({ a: { id: "a", data: { name: "Alice", age: 30 } } }, null);
+        await codec.flush(() => ({ a: { id: "a", data: { name: "Alice", age: 30 } } }), null);
         const raw = await readFile(join(TMP, "flush-null-meta.json"), "utf-8");
         const parsed = JSON.parse(raw);
         expect(parsed.meta).toBeNull();
@@ -83,7 +83,7 @@ describe("insert", () => {
             b: { id: "b", data: { name: "Bob", age: 25 } },
         };
         const meta: Meta = { user: null, type: "documents", version: 1 };
-        await codec.insert([data.b], data, meta);
+        await codec.insert([data.b], () => data, meta);
         const [loaded, loadedMeta] = await codec.load();
         expect(loaded).toEqual(data);
         expect(loadedMeta).toEqual(meta);
@@ -95,7 +95,7 @@ describe("update", () => {
         const codec = makeCodec("update");
         const data = { a: { id: "a", data: { name: "Alice Updated", age: 31 } } };
         const meta: Meta = { user: null, type: "documents", version: 1 };
-        await codec.update([data.a], data, meta);
+        await codec.update([data.a], () => data, meta);
         const [loaded] = await codec.load();
         expect(loaded.a.data.name).toBe("Alice Updated");
     });
@@ -105,7 +105,7 @@ describe("delete", () => {
     it("rewrites the full file with current data", async () => {
         const codec = makeCodec("delete");
         const data = { b: { id: "b", data: { name: "Bob", age: 25 } } };
-        await codec.delete([], data, null);
+        await codec.delete([], () => data, null);
         const [loaded] = await codec.load();
         expect(loaded).toEqual(data);
     });
@@ -115,7 +115,7 @@ describe("struct", () => {
     it("rewrites the full file with current data", async () => {
         const codec = makeCodec("struct");
         const data = { a: { id: "a", data: { name: "Alice", age: 30 } } };
-        await codec.struct([data.a], data, null);
+        await codec.struct([data.a], () => data, null);
         const [loaded] = await codec.load();
         expect(loaded).toEqual(data);
     });
@@ -130,7 +130,7 @@ describe("setMeta", () => {
         const codec = makeCodec("setmeta");
         const data = { a: { id: "a", data: { name: "Alice", age: 30 } } };
         const meta: Meta = { user: null, type: "documents", version: 2 };
-        await codec.setMeta(meta, data);
+        await codec.setMeta(meta, () => data);
         const [loaded, loadedMeta] = await codec.load();
         expect(loaded).toEqual(data);
         expect(loadedMeta).toEqual(meta);
@@ -144,7 +144,7 @@ describe("setMeta", () => {
 describe("null meta", () => {
     it("loads null when meta was never set", async () => {
         const codec = makeCodec("null-meta");
-        await codec.flush({}, null);
+        await codec.flush(() => ({}), null);
         const [, meta] = await codec.load();
         expect(meta).toBeNull();
     });

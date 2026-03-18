@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { Codec, DBMeta } from "../types";
+import { Codec, CodecData, DBMeta } from "../types";
 
 type Jsonable = string | number | boolean | null | Jsonable[] | { [key: string]: Jsonable };
 
@@ -10,7 +10,7 @@ export class JsonCodec<D extends { id: string; data: any } & Jsonable, M extends
         this.#file = file;
     }
 
-    async setMeta(value: M | null, data: { [id: string]: D }): Promise<void> {
+    async setMeta(value: M | null, data: CodecData<D>): Promise<void> {
         await this.flush(data, value);
     }
 
@@ -24,23 +24,23 @@ export class JsonCodec<D extends { id: string; data: any } & Jsonable, M extends
         }
     }
 
-    async flush(data: { [id: string]: D }, meta: M | null): Promise<void> {
-        await writeFile(this.#file, JSON.stringify({ meta, data }), "utf-8");
+    async flush(data: CodecData<D>, meta: M | null): Promise<void> {
+        await writeFile(this.#file, JSON.stringify({ meta, data: data() }), "utf-8");
     }
 
-    async insert(_items: D[], data: { [id: string]: D }, meta: M | null): Promise<void> {
+    async insert(_items: D[], data: CodecData<D>, meta: M | null): Promise<void> {
         await this.flush(data, meta);
     }
 
-    async update(_items: D[], data: { [id: string]: D }, meta: M | null): Promise<void> {
+    async update(_items: D[], data: CodecData<D>, meta: M | null): Promise<void> {
         await this.flush(data, meta);
     }
 
-    async delete(_items: D[], data: { [id: string]: D }, meta: M | null): Promise<void> {
+    async delete(_items: D[], data: CodecData<D>, meta: M | null): Promise<void> {
         await this.flush(data, meta);
     }
 
-    async struct(_items: D[], data: { [id: string]: D }, meta: M | null): Promise<void> {
+    async struct(_items: D[], data: CodecData<D>, meta: M | null): Promise<void> {
         await this.flush(data, meta);
     }
 }

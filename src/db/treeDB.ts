@@ -52,7 +52,7 @@ export class TreeDB<D, U = null> {
 
     async setMeta(value: U) {
         this.usermeta = value;
-        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, this.data);
+        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, () => this.data);
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -104,7 +104,7 @@ export class TreeDB<D, U = null> {
             created.push(item);
         }
 
-        await this.codec.insert(created, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.codec.insert(created, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
         return Array.isArray(dataOrItems) ? created : created[0];
     }
 
@@ -121,7 +121,7 @@ export class TreeDB<D, U = null> {
             this.deindexRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexRecord(idOrPayload, newData);
-            await this.codec.update([existing], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+            await this.codec.update([existing], () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D;
@@ -145,7 +145,7 @@ export class TreeDB<D, U = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.codec.update(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
         return items;
     }
 
@@ -164,7 +164,7 @@ export class TreeDB<D, U = null> {
             this.rootIds.add(id);
         }
 
-        await this.codec.struct([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.codec.struct([item], () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
         return item;
     }
 
@@ -198,8 +198,8 @@ export class TreeDB<D, U = null> {
             removed.push(item);
         }
 
-        if (structChanged.length > 0) await this.codec.struct(structChanged, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
-        if (removed.length > 0) await this.codec.delete(removed, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (structChanged.length > 0) await this.codec.struct(structChanged, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -239,8 +239,8 @@ export class TreeDB<D, U = null> {
             removed.push(item);
         }
 
-        if (structChanged.length > 0) await this.codec.struct(structChanged, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
-        if (removed.length > 0) await this.codec.delete(removed, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (structChanged.length > 0) await this.codec.struct(structChanged, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -276,7 +276,7 @@ export class TreeDB<D, U = null> {
             }
         }
 
-        if (removed.length > 0) await this.codec.delete(removed, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -298,7 +298,7 @@ export class TreeDB<D, U = null> {
             removed.push(item);
         }
 
-        if (removed.length > 0) await this.codec.delete(removed, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }

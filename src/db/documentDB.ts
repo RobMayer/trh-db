@@ -38,7 +38,7 @@ export class DocumentDB<D, U = null> {
 
     async setMeta(value: U) {
         this.usermeta = value;
-        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, this.data);
+        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, () => this.data);
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -72,7 +72,7 @@ export class DocumentDB<D, U = null> {
             existing.data = newData;
             this.indexRecord(idOrPayload, newData);
             items.push(existing);
-            await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+            await this.codec.update(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: D, meta: DocumentOf<D>) => D;
@@ -96,7 +96,7 @@ export class DocumentDB<D, U = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.codec.update(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
         return items;
     }
 
@@ -121,7 +121,7 @@ export class DocumentDB<D, U = null> {
             items.push(member);
         }
 
-        await this.codec.insert(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.codec.insert(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
         return Array.isArray(data) ? items : items[0];
     }
 
@@ -135,7 +135,7 @@ export class DocumentDB<D, U = null> {
             if (item) {
                 this.deindexRecord(target, item.data);
                 delete this.data[target];
-                await this.codec.delete([item], this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+                await this.codec.delete([item], () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
             }
             return item;
         } else {
@@ -149,7 +149,7 @@ export class DocumentDB<D, U = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.delete(items, this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.codec.delete(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
         return items;
     }
 

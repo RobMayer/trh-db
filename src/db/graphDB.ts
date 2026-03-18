@@ -54,7 +54,7 @@ export class GraphDB<N, L, U = null> {
 
     async setMeta(value: U) {
         this.usermeta = value;
-        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, this.records);
+        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, () => this.records);
     }
 
     // --- Node CRUD ---
@@ -92,7 +92,7 @@ export class GraphDB<N, L, U = null> {
             created.push(node);
         }
 
-        await this.codec.insert(created, this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.codec.insert(created, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
         return Array.isArray(data) ? created : created[0];
     }
 
@@ -109,7 +109,7 @@ export class GraphDB<N, L, U = null> {
             this.deindexNodeRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexNodeRecord(idOrPayload, newData);
-            await this.codec.update([existing], this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+            await this.codec.update([existing], () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: N, item: GraphNodeOf<N>) => N;
@@ -133,7 +133,7 @@ export class GraphDB<N, L, U = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.codec.update(items, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
         return items;
     }
 
@@ -159,8 +159,8 @@ export class GraphDB<N, L, U = null> {
             removedNodes.push(node);
         }
 
-        if (removedLinks.length > 0) await this.codec.delete(removedLinks, this.records, { version: VERSION, type: TYPE, user: this.usermeta });
-        if (removedNodes.length > 0) await this.codec.delete(removedNodes, this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removedLinks.length > 0) await this.codec.delete(removedLinks, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removedNodes.length > 0) await this.codec.delete(removedNodes, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
 
         return { nodes: removedNodes, links: removedLinks };
     }
@@ -190,7 +190,7 @@ export class GraphDB<N, L, U = null> {
         const toNode = this.nodeMap[to];
         if (toNode) toNode.in.push(id);
 
-        await this.codec.insert([link], this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.codec.insert([link], () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
         return link;
     }
 
@@ -209,7 +209,7 @@ export class GraphDB<N, L, U = null> {
             this.deindexLinkRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexLinkRecord(idOrPayload, newData);
-            await this.codec.update([existing], this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+            await this.codec.update([existing], () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L;
@@ -235,7 +235,7 @@ export class GraphDB<N, L, U = null> {
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.codec.update(items, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
         return items;
     }
 
@@ -250,7 +250,7 @@ export class GraphDB<N, L, U = null> {
             if (link) removed.push(link);
         }
 
-        if (removed.length > 0) await this.codec.delete(removed, this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.codec.delete(removed, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
         return typeof target === "string" ? removed[0] : removed;
     }
 

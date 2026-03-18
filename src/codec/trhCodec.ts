@@ -42,7 +42,7 @@ export class TrhCodec<D extends { id: string; data: any }, M extends DBMeta<any>
     #file: string;
     #transformers: { [sigil: string]: { serializer: (value: any) => any; parser: (token: any) => any } } = {};
 
-    async setMeta(value: M | null, _data: { [id: string]: D }): Promise<void> {
+    async setMeta(value: M | null, _data: () => { [id: string]: D }): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + [OP_META, JSON.stringify(value, this.#replacer)].join(SEP_OPERATION), "utf-8");
     }
 
@@ -150,35 +150,35 @@ export class TrhCodec<D extends { id: string; data: any }, M extends DBMeta<any>
         }
 
         // Compact on load
-        await this.flush(result, meta);
+        await this.flush(() => result, meta);
 
         return [result, meta];
     }
 
-    async flush(data: { [id: string]: D }, meta: M | null): Promise<void> {
+    async flush(data: () => { [id: string]: D }, meta: M | null): Promise<void> {
         const entries: string[] = [];
         if (meta !== null) {
             entries.push([OP_META, JSON.stringify(meta, this.#replacer)].join(SEP_OPERATION));
         }
-        for (const [id, item] of Object.entries(data)) {
+        for (const [id, item] of Object.entries(data())) {
             entries.push([OP_INSERT, id, JSON.stringify(item, this.#replacer)].join(SEP_OPERATION));
         }
         await writeFile(this.#file, entries.join(SEP_ENTRY), "utf-8");
     }
 
-    async insert(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
+    async insert(items: D[], _data: () => { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => [OP_INSERT, item.id, JSON.stringify(item, this.#replacer)].join(SEP_OPERATION)).join(SEP_ENTRY), "utf-8");
     }
 
-    async update(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
+    async update(items: D[], _data: () => { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => [OP_UPDATE, item.id, JSON.stringify(item.data, this.#replacer)].join(SEP_OPERATION)).join(SEP_ENTRY), "utf-8");
     }
 
-    async delete(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
+    async delete(items: D[], _data: () => { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(this.#file, SEP_ENTRY + items.map((item) => [OP_DELETE, item.id].join(SEP_OPERATION)).join(SEP_ENTRY), "utf-8");
     }
 
-    async struct(items: D[], _data: { [id: string]: D }, _meta: M | null): Promise<void> {
+    async struct(items: D[], _data: () => { [id: string]: D }, _meta: M | null): Promise<void> {
         await appendFile(
             this.#file,
             SEP_ENTRY +
