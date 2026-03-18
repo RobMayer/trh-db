@@ -548,11 +548,32 @@ describe("chaining across modes", () => {
 // ============================================================
 
 describe("path pipeline", () => {
-    it("pathTo finds paths between nodes", async () => {
+    it("pathTo finds downstream paths", async () => {
         const { db, a, c } = await seededDB();
         const paths = await db.node(a.id).pathTo(c.id).get();
         // Two paths: a->b->c and a->c
         expect((paths as any[]).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("pathFrom finds upstream paths", async () => {
+        const { db, c, a } = await seededDB();
+        // c has no outbound to a, but a->c exists, so upstream from c should find a
+        const paths = await db.node(c.id).pathFrom(a.id).get();
+        expect((paths as any[]).length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("pathFrom returns empty when no upstream path exists", async () => {
+        const { db, a, e } = await seededDB();
+        // a has no inbound links, so upstream from a can't reach e
+        expect(await db.node(a.id).pathFrom(e.id).exists()).toBe(false);
+    });
+
+    it("pathBetween finds paths in any direction", async () => {
+        const { db, e, a } = await seededDB();
+        // e has no outbound, but pathBetween follows any direction
+        // e<-d<-a, so going upstream from e reaches a
+        const paths = await db.node(e.id).pathBetween(a.id).get();
+        expect((paths as any[]).length).toBeGreaterThanOrEqual(1);
     });
 
     it("shortest returns all paths of minimum length", async () => {

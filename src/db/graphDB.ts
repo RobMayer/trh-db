@@ -964,7 +964,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             const paths = findPaths(items.map((n) => n.id), target, "upstream", linkData, nodeData);
             return createPathPipeline(db, paths);
         },
-        pathUntil(target: string | Function) {
+        pathBetween(target: string | Function) {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const paths = findPaths(items.map((n) => n.id), target, "any", linkData, nodeData);
             return createPathPipeline(db, paths);
@@ -1443,7 +1443,7 @@ export interface GraphNodePipeline<N, L, C extends Cardinality> extends GraphNod
     in(): GraphLinkPipeline<N, L, "multi">;
     pathTo(target: string): GraphPathPipeline<N, L, "multi", "multi">;
     pathFrom(target: string): GraphPathPipeline<N, L, "multi", "multi">;
-    pathUntil(target: string): GraphPathPipeline<N, L, "multi", "multi">;
+    pathBetween(target: string): GraphPathPipeline<N, L, "multi", "multi">;
 }
 
 // --- Link pipeline interface ---
