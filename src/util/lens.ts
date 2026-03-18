@@ -1,5 +1,8 @@
 import { TrhSymbols } from "@trh/symbols";
 
+/** Attach per-element meta to array items for use in nested `where` predicates. */
+export const ELEMENT_META = Symbol("ELEMENT_META");
+
 // --- Public API ---
 
 // Output types — what the lens callback must return
@@ -628,7 +631,11 @@ function createProxy(state: LensState): any {
             if (prop === LENS) return state;
 
             if (typeof prop === "string" && state.meta && prop in state.meta) {
-                return createProxy({ value: state.meta[prop], isEach: false, path: [], filters: [] });
+                const metaVal = state.meta[prop];
+                if (typeof metaVal === "function") {
+                    return (...args: any[]) => createProxy({ value: metaVal(...args), isEach: false, path: [], filters: [] });
+                }
+                return createProxy({ value: metaVal, isEach: false, path: [], filters: [] });
             }
 
             switch (prop) {
@@ -719,7 +726,7 @@ function createProxy(state: LensState): any {
                     return (predFn: Function) => {
                         const filterArr = (arr: any[]) =>
                             arr.filter((item) => {
-                                const itemProxy = createProxy({ value: item, isEach: false, path: [], filters: [] });
+                                const itemProxy = createProxy({ value: item, isEach: false, path: [], filters: [], meta: item?.[ELEMENT_META] });
                                 return evalPredicate(predFn(itemProxy));
                             });
                         const nextFilters = [...filters, { type: "where" as const, predFn }];

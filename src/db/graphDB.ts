@@ -1,6 +1,6 @@
 import { Codec, DBMeta, GraphNodeOf, GraphLinkOf, ListOf, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
-import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf } from "../util/lens";
+import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf, ELEMENT_META } from "../util/lens";
 
 // ------------------------------------------------------------
 // GraphDB<N, L>
@@ -496,6 +496,12 @@ export type GraphLinkMeta = {
 
 export type GraphPathMeta = {
     LENGTH: SelectorLens<number>;
+};
+
+type GraphPathData<N, L> = {
+    links: (L & { ID: string; FROM: string; TO: string })[];
+    nodes: (N & { ID: string; IN_DEGREE: number; OUT_DEGREE: number; DEGREE: number })[];
+    length: number;
 };
 
 // ------------------------------------------------------------
@@ -1172,6 +1178,39 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
 // Path Pipeline
 // ------------------------------------------------------------
 
+function syntheticPathMeta<N, L>(path: GraphPath<N, L>): { data: { length: number }; meta: Record<string, unknown> } {
+    return {
+        data: { length: path.length },
+        meta: {
+            LENGTH: path.length,
+            NODES: path.length > 0 ? [path[0][0].id, ...path.map((s) => s[2].id)] : [],
+            LINKS: path.map((s) => s[1].id),
+            nodes: () => {
+                const result: any[] = [];
+                const seen = new Set<string>();
+                for (const step of path) {
+                    for (const node of [step[0], step[2]]) {
+                        if (!seen.has(node.id)) {
+                            seen.add(node.id);
+                            const nodeData = { ...(node.data as any) };
+                            Object.defineProperty(nodeData, ELEMENT_META, { value: { ID: node.id, IN_DEGREE: node.in.length, OUT_DEGREE: node.out.length, DEGREE: node.in.length + node.out.length }, enumerable: false });
+                            result.push(nodeData);
+                        }
+                    }
+                }
+                return result;
+            },
+            links: () => {
+                return path.map((step) => {
+                    const linkData = { ...(step[1].data as any) };
+                    Object.defineProperty(linkData, ELEMENT_META, { value: { ID: step[1].id, FROM: step[1].from, TO: step[1].to }, enumerable: false });
+                    return linkData;
+                });
+            },
+        },
+    };
+}
+
 function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPath<N, L>[]): any {
     let paths = initialPaths;
     let isSinglePath = false;
@@ -1228,7 +1267,10 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
             return pipeline;
         },
         where(predFn: Function) {
-            paths = paths.filter((path) => Lens.match({ length: path.length } as any, predFn, { LENGTH: path.length }));
+            paths = paths.filter((path) => {
+                const { data, meta } = syntheticPathMeta(path);
+                return Lens.match(data as any, predFn, meta);
+            });
             return pipeline;
         },
         shortest() {
@@ -1471,7 +1513,7 @@ export interface GraphPathPipeline<N, L, PC extends Cardinality, SC extends Card
     // Filters (PC stays same)
     whereNodes<T>(predFn: ($: SelectorLens<N> & GraphNodeMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
     whereLinks<T>(predFn: ($: SelectorLens<L> & GraphLinkMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
-    where<T>(predFn: ($: SelectorLens<{ length: number }> & GraphPathMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
+    where<T>(predFn: ($: SelectorLens<GraphPathData<N, L>> & GraphPathMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
     shortest(): GraphPathPipeline<N, L, PC, SC>;
     longest(): GraphPathPipeline<N, L, PC, SC>;
 

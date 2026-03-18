@@ -995,3 +995,25 @@ describe("set operations", () => {
         });
     });
 });
+
+// ============================================================
+// add: bulk with null parent
+// ============================================================
+
+describe("add: bulk", () => {
+    it("bulk adds with per-item parent including null", async () => {
+        const db = makeDB();
+        const root = await db.add({ name: "Root", age: 50 }, null);
+        const children = await db.add([
+            { data: { name: "A", age: 10 }, parent: root.id },
+            { data: { name: "B", age: 20 }, parent: root.id },
+            { data: { name: "C", age: 30 }, parent: null },
+        ]);
+        expect(children).toHaveLength(3);
+        expect(db.get(root.id)?.children).toContain(children[0].id);
+        expect(db.get(root.id)?.children).toContain(children[1].id);
+        expect(db.get(root.id)?.children).not.toContain(children[2].id);
+        expect(children[2].parent).toBeNull();
+        expect(rootIdSet(db).has(children[2].id)).toBe(true);
+    });
+});

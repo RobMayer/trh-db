@@ -801,3 +801,29 @@ describe("set operations", () => {
         });
     });
 });
+
+// ============================================================
+// Pipeline — lens-targeted update
+// ============================================================
+
+describe("pipeline: lens-targeted update", () => {
+    it("updates a nested field via lens", async () => {
+        type WithAddress = { name: string; address: { city: string; zip: string } };
+        const codec = new MemoryCodec<DocumentOf<WithAddress>>();
+        const db = new DocumentDB<WithAddress>(codec);
+        const a = await db.insert({ name: "Alice", address: { city: "NYC", zip: "10001" } });
+        const b = await db.insert({ name: "Bob", address: { city: "LA", zip: "90001" } });
+
+        await (db as any).where(($: any) => [$("address")("city"), "=", "NYC"]).update(($: any) => $("address")("zip"), "10002");
+
+        expect(db.get(a.id)?.data.address.zip).toBe("10002");
+        expect(db.get(b.id)?.data.address.zip).toBe("90001"); // unchanged
+    });
+
+    it("updates a top-level field via lens on seeded DB", async () => {
+        const { db, alice, bob } = await seededDB();
+        await (db as any).where(($: any) => [$("name"), "=", "Alice"]).update(($: any) => $("age"), 99);
+        expect(db.get(alice.id)?.data.age).toBe(99);
+        expect(db.get(bob.id)?.data.age).toBe(25); // unchanged
+    });
+});
