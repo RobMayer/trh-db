@@ -10,7 +10,7 @@ const TYPE = "tree";
 const VERSION = 1;
 
 type TreeOf<D> = { [id: string]: TreeItemOf<D> };
-export type TreeItemOf<D> = { id: string; parent: string | null; children: string[]; data: D };
+export type TreeItemOf<D> = { id: string; type: "treeitem"; parent: string | null; children: string[]; data: D };
 
 function detach<D>(data: TreeOf<D>, id: string): void {
     const item = data[id];
@@ -79,7 +79,7 @@ export class TreeDB<D, U = null> {
         if (Array.isArray(dataOrItems)) {
             for (const entry of dataOrItems) {
                 const id = crypto.randomUUID();
-                const item: TreeItemOf<D> = { id, data: entry.data, parent: entry.parent, children: [] };
+                const item: TreeItemOf<D> = { id, type: "treeitem", data: entry.data, parent: entry.parent, children: [] };
                 this.data[id] = item;
                 this.indexRecord(id, entry.data);
                 if (entry.parent !== null) {
@@ -92,7 +92,7 @@ export class TreeDB<D, U = null> {
             }
         } else {
             const id = crypto.randomUUID();
-            const item: TreeItemOf<D> = { id, data: dataOrItems, parent: parent!, children: [] };
+            const item: TreeItemOf<D> = { id, type: "treeitem", data: dataOrItems, parent: parent!, children: [] };
             this.data[id] = item;
             this.indexRecord(id, dataOrItems);
             if (parent !== null) {

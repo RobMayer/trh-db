@@ -61,7 +61,7 @@ describe("get", () => {
     it("returns a single node by id", async () => {
         const { db, alice, dad } = await seededDB();
         const result = db.get(alice.id);
-        expect(result).toEqual({ id: alice.id, parent: dad.id, children: [], data: { name: "Alice", age: 10 } });
+        expect(result).toEqual({ id: alice.id, type: "treeitem", parent: dad.id, children: [], data: { name: "Alice", age: 10 } });
     });
 
     it("returns multiple nodes by id list", async () => {

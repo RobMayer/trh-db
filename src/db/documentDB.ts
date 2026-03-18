@@ -8,7 +8,7 @@ import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult,
 
 export type DocumentId = string;
 export type DocumentsOf<D> = { [id: DocumentId]: DocumentOf<D> };
-export type DocumentOf<D> = { id: DocumentId; data: D };
+export type DocumentOf<D> = { id: DocumentId; type: "document"; data: D };
 
 const TYPE = "documents";
 const VERSION = 1;
@@ -108,14 +108,14 @@ export class DocumentDB<D, U = null> {
         if (Array.isArray(data)) {
             for (const d of data) {
                 const id = crypto.randomUUID();
-                const member: DocumentOf<D> = { id, data: d };
+                const member: DocumentOf<D> = { id, type: "document", data: d };
                 this.data[id] = member;
                 this.indexRecord(id, d);
                 items.push(member);
             }
         } else {
             const id = crypto.randomUUID();
-            const member: DocumentOf<D> = { id, data };
+            const member: DocumentOf<D> = { id, type: "document", data };
             this.data[id] = member;
             this.indexRecord(id, data);
             items.push(member);

@@ -28,7 +28,7 @@ describe("get", () => {
         const db = makeDB();
         const a = await db.insert({ name: "Alice", age: 30 });
         const result = db.get(a.id);
-        expect(result).toEqual({ id: a.id, data: { name: "Alice", age: 30 } });
+        expect(result).toEqual({ id: a.id, type: "document", data: { name: "Alice", age: 30 } });
     });
 
     it("returns multiple records by id list", async () => {
@@ -391,7 +391,7 @@ describe("pipeline: select", () => {
     it("selects a single record", async () => {
         const { db, alice } = await seededDB();
         const result = await db.select(alice.id).get();
-        expect(result).toEqual({ id: alice.id, data: { name: "Alice", age: 30 } });
+        expect(result).toEqual({ id: alice.id, type: "document", data: { name: "Alice", age: 30 } });
     });
 
     it("returns undefined for missing single select", async () => {
