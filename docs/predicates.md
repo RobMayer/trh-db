@@ -194,8 +194,8 @@ Meta fields use property access (`$.ID`), while data fields use function call sy
 The path pipeline has callable meta fields that return navigable arrays:
 
 ```ts
-// $.nodes() — returns array of node data, each with per-element meta (_.ID, _.DEGREE, etc.)
-// $.links() — returns array of link data, each with per-element meta (_.ID, _.FROM, _.TO)
+// $.nodes() — returns array of node data, each with per-element meta ($2.ID, $2.DEGREE, etc.)
+// $.links() — returns array of link data, each with per-element meta ($2.ID, $2.FROM, $2.TO)
 
 db.node(a)
     .pathTo(b)
@@ -205,7 +205,7 @@ db.node(a)
     .pathTo(b)
     .where(($) => [
         $.nodes()
-            .where((_) => [_.ID, "=", someNodeId])
+            .where(($2) => [$2.ID, "=", someNodeId])
             .size(),
         ">",
         0,

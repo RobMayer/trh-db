@@ -1216,6 +1216,8 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
     let isSinglePath = false;
     let isSingleStep = false;
     let steps: GraphStep<N, L>[] | null = null; // populated when step() narrows SC
+    const nodeData = (db as any).nodeMap as { [id: string]: GraphNodeOf<N> };
+    const linkData = (db as any).linkMap as { [id: string]: GraphLinkOf<L> };
 
     function execute(): GraphPath<N, L>[] | GraphPath<N, L> | GraphStep<N, L>[] | GraphStep<N, L> | undefined {
         if (isSingleStep && isSinglePath) {
@@ -1242,30 +1244,6 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
         },
 
         // --- Path filters (PC stays multi) ---
-        whereNodes(predFn: Function) {
-            paths = paths.filter((path) => {
-                const nodesSeen = new Set<string>();
-                for (const step of path) {
-                    for (const node of [step[0], step[2]]) {
-                        if (!nodesSeen.has(node.id)) {
-                            nodesSeen.add(node.id);
-                            if (!Lens.match(node.data, predFn, nodeMetaFor(node))) return false;
-                        }
-                    }
-                }
-                return true;
-            });
-            return pipeline;
-        },
-        whereLinks(predFn: Function) {
-            paths = paths.filter((path) => {
-                for (const step of path) {
-                    if (!Lens.match(step[1].data, predFn, linkMetaFor(step[1]))) return false;
-                }
-                return true;
-            });
-            return pipeline;
-        },
         where(predFn: Function) {
             paths = paths.filter((path) => {
                 const { data, meta } = syntheticPathMeta(path);
@@ -1273,6 +1251,54 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
             });
             return pipeline;
         },
+
+        // --- Path chaining (extend current paths from their terminal node) ---
+        pathTo(target: string) {
+            const newPaths: GraphPath<N, L>[] = [];
+            for (const path of paths) {
+                if (path.length === 0) continue;
+                const terminal = path[path.length - 1][2];
+                for (const ext of findPaths([terminal.id], target, "downstream", linkData, nodeData)) {
+                    newPaths.push([...path, ...ext]);
+                }
+            }
+            paths = newPaths;
+            isSinglePath = false;
+            isSingleStep = false;
+            steps = null;
+            return pipeline;
+        },
+        pathFrom(target: string) {
+            const newPaths: GraphPath<N, L>[] = [];
+            for (const path of paths) {
+                if (path.length === 0) continue;
+                const terminal = path[path.length - 1][2];
+                for (const ext of findPaths([terminal.id], target, "upstream", linkData, nodeData)) {
+                    newPaths.push([...path, ...ext]);
+                }
+            }
+            paths = newPaths;
+            isSinglePath = false;
+            isSingleStep = false;
+            steps = null;
+            return pipeline;
+        },
+        pathBetween(target: string) {
+            const newPaths: GraphPath<N, L>[] = [];
+            for (const path of paths) {
+                if (path.length === 0) continue;
+                const terminal = path[path.length - 1][2];
+                for (const ext of findPaths([terminal.id], target, "any", linkData, nodeData)) {
+                    newPaths.push([...path, ...ext]);
+                }
+            }
+            paths = newPaths;
+            isSinglePath = false;
+            isSingleStep = false;
+            steps = null;
+            return pipeline;
+        },
+
         shortest() {
             if (paths.length === 0) return pipeline;
             let minLen = paths[0].length;
@@ -1511,11 +1537,14 @@ export interface GraphLinkPipeline<N, L, C extends Cardinality> extends GraphLin
 
 export interface GraphPathPipeline<N, L, PC extends Cardinality, SC extends Cardinality = "multi"> extends GraphPathTerminals<N, L, PC, SC> {
     // Filters (PC stays same)
-    whereNodes<T>(predFn: ($: SelectorLens<N> & GraphNodeMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
-    whereLinks<T>(predFn: ($: SelectorLens<L> & GraphLinkMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
     where<T>(predFn: ($: SelectorLens<GraphPathData<N, L>> & GraphPathMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphPathPipeline<N, L, PC, SC>;
     shortest(): GraphPathPipeline<N, L, PC, SC>;
     longest(): GraphPathPipeline<N, L, PC, SC>;
+
+    // Path chaining (extend from terminal node)
+    pathTo(target: string): GraphPathPipeline<N, L, "multi", "multi">;
+    pathFrom(target: string): GraphPathPipeline<N, L, "multi", "multi">;
+    pathBetween(target: string): GraphPathPipeline<N, L, "multi", "multi">;
 
     // Presentation (PC stays same)
     sort<T>(lens: ($: SelectorLens<{ length: number }> & GraphPathMeta) => SelectorLens<T>, dir: "asc" | "desc"): GraphPathPipeline<N, L, PC, SC>;

@@ -342,21 +342,14 @@ The path pipeline tracks cardinality on two axes:
 
 // By link data (callable meta)
 .where($ => [$.links().at(-1)("latency"), "<", 5])          // last link has low latency
-.where($ => [$.links().where(_ => [_("protocol"), "=", "tcp"]).size(), ">", 0])  // has a TCP link
+.where($ => [$.links().where($2 => [$2("protocol"), "=", "tcp"]).size(), ">", 0])  // has a TCP link
 
 // By node data (callable meta)
-.where($ => [$.nodes().where(_ => [_("cpu"), ">", 8]).size(), "=", $.LENGTH])    // all nodes have high CPU
+.where($ => [$.nodes().where($2 => [$2("cpu"), ">", 8]).size(), "=", $.LENGTH])    // all nodes have high CPU
 
 // Per-element meta in nested where
-.where($ => [$.links().where(_ => [_.FROM, "=", someId]).size(), ">", 0])
-.where($ => [$.nodes().where(_ => [_.DEGREE, ">", 3]).size(), ">", 0])
-```
-
-Convenience filters (check ALL nodes/links against a predicate):
-
-```ts
-.whereNodes($ => [$("cpu"), ">", 4])     // all nodes on path satisfy
-.whereLinks($ => [$("latency"), "<", 10]) // all links on path satisfy
+.where($ => [$.links().where($2 => [$2.FROM, "=", someId]).size(), ">", 0])
+.where($ => [$.nodes().where($2 => [$2.DEGREE, ">", 3]).size(), ">", 0])
 ```
 
 #### Path Cardinality Operations
@@ -393,6 +386,23 @@ SC axis (which steps):
 .nodes()                // all nodes across all paths → node pipeline
 .links()                // all links across all paths → link pipeline
 ```
+
+#### Path Chaining
+
+`pathTo`, `pathFrom`, and `pathBetween` can be called on a path pipeline to extend each current path from its terminal (last) node. The result is a new set of paths where each original path is concatenated with a discovered extension. Cardinality resets to multi after chaining.
+
+```ts
+// Find paths from a to b, then extend each to c
+db.node(a).pathTo(b).pathTo(c);
+
+// Filter the first segment before extending
+db.node(a)
+    .pathTo(b)
+    .where(($) => [$.links().where(($2) => [$2("latency"), ">=", 10]).size(), "=", 0])
+    .pathTo(c);
+```
+
+If any current path has no onward route to the new target, it is dropped from the result.
 
 ## Join
 
@@ -458,7 +468,7 @@ const path = await db.node(sourceId).pathTo(targetId).shortest().first().get();
 const paths = await db
     .node(sourceId)
     .pathTo(targetId)
-    .whereLinks(($) => [$("latency"), "<", 10])
+    .where(($) => [$.links().where(($2) => [$2("latency"), ">=", 10]).size(), "=", 0])
     .get();
 ```
 

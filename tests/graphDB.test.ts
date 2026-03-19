@@ -699,13 +699,13 @@ describe("path pipeline", () => {
         expect(await db.node(e.id).pathTo(a.id).exists()).toBe(false);
     });
 
-    it("whereLinks filters paths by link data", async () => {
+    it("where with $.links() filters paths by link data (all links must pass)", async () => {
         const { db, a, c } = await seededDB();
         // Only paths where ALL links have cost < 3
         const paths = await db
             .node(a.id)
             .pathTo(c.id)
-            .whereLinks(($) => [$("cost"), "<", 3])
+            .where(($: any) => [$.links().where((_: any) => [_("cost"), ">=", 3]).size(), "=", 0])
             .get();
         // a->b(cost 1)->c(cost 2) passes, a->c(cost 5) fails
         expect(paths.length).toBe(1);
@@ -1542,5 +1542,51 @@ describe("path: sort, slice, paginate, window", () => {
             .get();
         expect(result.length).toBe(1);
         expect(result[0].length).toBe(2); // second path (2-step)
+    });
+});
+
+// ============================================================
+// Path: chaining (pathTo/pathFrom/pathBetween on path pipeline)
+// ============================================================
+
+describe("path: chaining", () => {
+    it("pathTo chains a downstream extension from terminal node", async () => {
+        const { db, a, b, c } = await seededDB();
+        // a->b then b->c — combined path should be a->ab->b->bc->c (2 steps)
+        const paths = await db.node(a.id).pathTo(b.id).pathTo(c.id).get();
+        expect(paths.length).toBe(1);
+        expect(paths[0].length).toBe(2); // two steps: a->b, b->c
+        expect(paths[0][0][0].id).toBe(a.id);
+        expect(paths[0][0][2].id).toBe(b.id);
+        expect(paths[0][1][0].id).toBe(b.id);
+        expect(paths[0][1][2].id).toBe(c.id);
+    });
+
+    it("pathTo chains through waypoint, filtering between segments", async () => {
+        const { db, a, b, c } = await seededDB();
+        // Only paths a->b where cost < 2, then b->c — filters first segment
+        const paths = await db
+            .node(a.id)
+            .pathTo(b.id)
+            .where(($: any) => [$.links().where((_: any) => [_("cost"), ">=", 2]).size(), "=", 0])
+            .pathTo(c.id)
+            .get();
+        // a->b via ab (cost 1) passes, then extends to c — 1 combined path
+        expect(paths.length).toBe(1);
+        expect(paths[0].length).toBe(2);
+    });
+
+    it("chained pathTo resets cardinality to multi", async () => {
+        const { db, a, b, c } = await seededDB();
+        // first() narrows to single path, then pathTo resets to multi
+        const paths = await db.node(a.id).pathTo(b.id).first().pathTo(c.id).get();
+        expect(Array.isArray(paths)).toBe(true);
+    });
+
+    it("pathTo on path pipeline with no terminal yields empty result", async () => {
+        const { db, a, e } = await seededDB();
+        // a->e has no direct pathTo route (e has no outbound), chaining further yields nothing
+        const paths = await db.node(a.id).pathTo(e.id).pathTo(a.id).get();
+        expect(paths.length).toBe(0);
     });
 });
