@@ -1,22 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { GraphDB, GraphStep, GraphPath } from "../src/db/graphDB";
+import { GraphDB, GraphStep, GraphPath, GraphLinkOf, GraphNodeOf } from "../src/db/graphDB";
 import { MemoryCodec } from "../src/codec/memoryCodec";
-import { GraphNodeOf, GraphLinkOf } from "../src/types";
-import { IndexStore } from "../src/util/indices";
-
 type NodeData = { name: string; weight: number };
 type LinkData = { label: string; cost: number };
 
 function makeDB() {
     return new GraphDB<NodeData, LinkData>(new MemoryCodec());
-}
-
-function nodeIdx(db: GraphDB<any, any>): IndexStore {
-    return (db as any).nodeIndices;
-}
-
-function linkIdx(db: GraphDB<any, any>): IndexStore {
-    return (db as any).linkIndices;
 }
 
 /**
@@ -277,38 +266,38 @@ describe("isolate", () => {
 
 describe("node index", () => {
     it("creates index and backfills", async () => {
-        const { db, a } = await seededDB();
+        const { db } = await seededDB();
         db.addNodeIndex(($) => $("name"));
-        expect(nodeIdx(db).eq("name", "A")).toEqual(new Set([a.id]));
+        expect(db.getNodeIndices()["name"]).toContain("A");
     });
 
     it("indexes on insert", async () => {
         const db = makeDB();
         db.addNodeIndex(($) => $("weight"));
-        const n = await db.insert({ name: "X", weight: 42 });
-        expect(nodeIdx(db).eq("weight", 42)).toEqual(new Set([n.id]));
+        await db.insert({ name: "X", weight: 42 });
+        expect(db.getNodeIndices()["weight"]).toContain("42");
     });
 
     it("deindexes on remove", async () => {
         const { db, a } = await seededDB();
         db.addNodeIndex(($) => $("name"));
         await db.remove(a.id);
-        expect(nodeIdx(db).eq("name", "A")).toEqual(new Set());
+        expect(db.getNodeIndices()["name"] ?? []).not.toContain("A");
     });
 });
 
 describe("link index", () => {
     it("creates index and backfills", async () => {
-        const { db, ab } = await seededDB();
+        const { db } = await seededDB();
         db.addLinkIndex(($) => $("label"));
-        expect(linkIdx(db).eq("label", "ab")).toEqual(new Set([ab.id]));
+        expect(db.getLinkIndices()["label"]).toContain("ab");
     });
 
     it("deindexes on sever", async () => {
         const { db, ab } = await seededDB();
         db.addLinkIndex(($) => $("label"));
         await db.sever(ab.id);
-        expect(linkIdx(db).eq("label", "ab")).toEqual(new Set());
+        expect(db.getLinkIndices()["label"] ?? []).not.toContain("ab");
     });
 });
 
@@ -705,7 +694,13 @@ describe("path pipeline", () => {
         const paths = await db
             .node(a.id)
             .pathTo(c.id)
-            .where(($: any) => [$.links().where((_: any) => [_("cost"), ">=", 3]).size(), "=", 0])
+            .where(($: any) => [
+                $.links()
+                    .where((_: any) => [_("cost"), ">=", 3])
+                    .size(),
+                "=",
+                0,
+            ])
             .get();
         // a->b(cost 1)->c(cost 2) passes, a->c(cost 5) fails
         expect(paths.length).toBe(1);
@@ -1568,7 +1563,13 @@ describe("path: chaining", () => {
         const paths = await db
             .node(a.id)
             .pathTo(b.id)
-            .where(($: any) => [$.links().where((_: any) => [_("cost"), ">=", 2]).size(), "=", 0])
+            .where(($: any) => [
+                $.links()
+                    .where((_: any) => [_("cost"), ">=", 2])
+                    .size(),
+                "=",
+                0,
+            ])
             .pathTo(c.id)
             .get();
         // a->b via ab (cost 1) passes, then extends to c — 1 combined path

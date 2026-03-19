@@ -429,6 +429,15 @@ export class IndexStore {
         return [...this.#indices.keys()];
     }
 
+    dump(): { [path: string]: string[] } {
+        const result: { [path: string]: string[] } = {};
+        for (const [pathKey, tree] of this.#indices) {
+            result[pathKey] = [];
+            for (const [value] of tree.entries()) result[pathKey].push(String(value));
+        }
+        return result;
+    }
+
     #collect(iter?: Generator<[unknown, Set<string>]>): Set<string> {
         if (!iter) return new Set();
         const result = new Set<string>();

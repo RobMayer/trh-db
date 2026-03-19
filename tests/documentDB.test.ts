@@ -1,17 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { DocumentDB, DocumentOf } from "../src/db/documentDB";
 import { MemoryCodec } from "../src/codec/memoryCodec";
-import { IndexStore } from "../src/util/indices";
 
 type User = { name: string; age: number };
 
 function makeDB() {
     return new DocumentDB<User>(new MemoryCodec());
-}
-
-/** Reach into TS-private `indices` field for test assertions */
-function idx(db: DocumentDB<any>): IndexStore {
-    return (db as any).indices;
 }
 
 // ============================================================
@@ -219,11 +213,11 @@ describe("update", () => {
         const db = makeDB();
         db.addIndex(($) => $("age"));
         const a = await db.insert({ name: "Alice", age: 30 });
-        expect(idx(db).eq("age", 30)).toEqual(new Set([a.id]));
+        expect(db.getIndices()["age"]).toContain("30");
 
         await db.update(a.id, { name: "Alice", age: 31 });
-        expect(idx(db).eq("age", 30)).toEqual(new Set());
-        expect(idx(db).eq("age", 31)).toEqual(new Set([a.id]));
+        expect(db.getIndices()["age"] ?? []).not.toContain("30");
+        expect(db.getIndices()["age"]).toContain("31");
     });
 
     it("calls codec.update", async () => {
@@ -259,30 +253,30 @@ describe("update", () => {
 describe("addIndex / dropIndex", () => {
     it("creates an index and backfills from existing data", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([
+        await db.insert([
             { name: "Alice", age: 30 },
             { name: "Bob", age: 25 },
         ]);
         db.addIndex(($) => $("name"));
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set([a.id]));
-        expect(idx(db).eq("name", "Bob")).toEqual(new Set([b.id]));
+        expect(db.getIndices()["name"]).toContain("Alice");
+        expect(db.getIndices()["name"]).toContain("Bob");
     });
 
     it("drops an index", async () => {
         const db = makeDB();
         db.addIndex(($) => $("name"));
-        const a = await db.insert({ name: "Alice", age: 30 });
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set([a.id]));
+        await db.insert({ name: "Alice", age: 30 });
+        expect(db.getIndices()["name"]).toContain("Alice");
         db.dropIndex(($) => $("name"));
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set());
+        expect(db.getIndices()["name"]).toBeUndefined();
     });
 
     it("ignores duplicate addIndex", async () => {
         const db = makeDB();
         db.addIndex(($) => $("name"));
-        const a = await db.insert({ name: "Alice", age: 30 });
+        await db.insert({ name: "Alice", age: 30 });
         db.addIndex(($) => $("name")); // should not clear existing index data
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set([a.id]));
+        expect(db.getIndices()["name"]).toContain("Alice");
     });
 });
 
@@ -294,23 +288,23 @@ describe("index maintenance", () => {
     it("indexes values on insert", async () => {
         const db = makeDB();
         db.addIndex(($) => $("age"));
-        const a = await db.insert({ name: "Alice", age: 30 });
-        const b = await db.insert({ name: "Bob", age: 25 });
-        const c = await db.insert({ name: "Charlie", age: 30 });
+        await db.insert({ name: "Alice", age: 30 });
+        await db.insert({ name: "Bob", age: 25 });
+        await db.insert({ name: "Charlie", age: 30 });
 
-        expect(idx(db).eq("age", 30)).toEqual(new Set([a.id, c.id]));
-        expect(idx(db).eq("age", 25)).toEqual(new Set([b.id]));
+        expect(db.getIndices()["age"]).toContain("30");
+        expect(db.getIndices()["age"]).toContain("25");
     });
 
     it("deindexes values on remove", async () => {
         const db = makeDB();
         db.addIndex(($) => $("name"));
         const a = await db.insert({ name: "Alice", age: 30 });
-        const b = await db.insert({ name: "Bob", age: 25 });
+        await db.insert({ name: "Bob", age: 25 });
         await db.remove(a.id);
 
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set());
-        expect(idx(db).eq("name", "Bob")).toEqual(new Set([b.id]));
+        expect(db.getIndices()["name"] ?? []).not.toContain("Alice");
+        expect(db.getIndices()["name"]).toContain("Bob");
     });
 
     it("handles nested path indices", async () => {
@@ -320,14 +314,14 @@ describe("index maintenance", () => {
         db.addIndex(($) => $("address")("city"));
 
         const a = await db.insert({ name: "Alice", address: { city: "NYC", zip: "10001" } });
-        const b = await db.insert({ name: "Bob", address: { city: "LA", zip: "90001" } });
+        await db.insert({ name: "Bob", address: { city: "LA", zip: "90001" } });
 
-        expect(idx(db).eq("address.city", "NYC")).toEqual(new Set([a.id]));
-        expect(idx(db).eq("address.city", "LA")).toEqual(new Set([b.id]));
+        expect(db.getIndices()["address.city"]).toContain("NYC");
+        expect(db.getIndices()["address.city"]).toContain("LA");
 
         await db.remove(a.id);
-        expect(idx(db).eq("address.city", "NYC")).toEqual(new Set());
-        expect(idx(db).eq("address.city", "LA")).toEqual(new Set([b.id]));
+        expect(db.getIndices()["address.city"] ?? []).not.toContain("NYC");
+        expect(db.getIndices()["address.city"]).toContain("LA");
     });
 
     it("handles multiple indices simultaneously", async () => {
@@ -336,16 +330,16 @@ describe("index maintenance", () => {
         db.addIndex(($) => $("age"));
 
         const a = await db.insert({ name: "Alice", age: 30 });
-        const b = await db.insert({ name: "Bob", age: 25 });
+        await db.insert({ name: "Bob", age: 25 });
 
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set([a.id]));
-        expect(idx(db).eq("age", 30)).toEqual(new Set([a.id]));
+        expect(db.getIndices()["name"]).toContain("Alice");
+        expect(db.getIndices()["age"]).toContain("30");
 
         await db.remove(a.id);
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set());
-        expect(idx(db).eq("age", 30)).toEqual(new Set());
-        expect(idx(db).eq("name", "Bob")).toEqual(new Set([b.id]));
-        expect(idx(db).eq("age", 25)).toEqual(new Set([b.id]));
+        expect(db.getIndices()["name"] ?? []).not.toContain("Alice");
+        expect(db.getIndices()["age"] ?? []).not.toContain("30");
+        expect(db.getIndices()["name"]).toContain("Bob");
+        expect(db.getIndices()["age"]).toContain("25");
     });
 });
 

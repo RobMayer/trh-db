@@ -23,36 +23,36 @@ function detach<D>(data: TreeOf<D>, id: string): void {
 }
 
 export class TreeDB<D, U = null> {
-    private data: TreeOf<D> = {};
-    private rootIds = new Set<string>();
-    private usermeta: U | null = null;
-    private codec: Codec<TreeItemOf<D>, DBMeta<U | null>>;
-    private indices = new IndexStore();
-    private indexLenses: { [serializedKey: string]: Function } = {};
+    #data: TreeOf<D> = {};
+    #rootIds = new Set<string>();
+    #usermeta: U | null = null;
+    #codec: Codec<TreeItemOf<D>, DBMeta<U | null>>;
+    #indices = new IndexStore();
+    #indexLenses: { [serializedKey: string]: Function } = {};
 
     constructor(codec: Codec<TreeItemOf<D>, DBMeta<U | null>>) {
-        this.codec = codec;
-        this.usermeta = null;
+        this.#codec = codec;
+        this.#usermeta = null;
     }
 
     async load() {
-        const [data, meta] = await this.codec.load();
-        this.data = data;
-        this.rootIds.clear();
+        const [data, meta] = await this.#codec.load();
+        this.#data = data;
+        this.#rootIds.clear();
         for (const item of Object.values(data)) {
-            if (item.parent === null) this.rootIds.add(item.id);
+            if (item.parent === null) this.#rootIds.add(item.id);
         }
-        this.usermeta = meta?.user ?? null;
-        return this.usermeta;
+        this.#usermeta = meta?.user ?? null;
+        return this.#usermeta;
     }
 
     getMeta() {
-        return this.usermeta;
+        return this.#usermeta;
     }
 
     async setMeta(value: U) {
-        this.usermeta = value;
-        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, () => this.data);
+        this.#usermeta = value;
+        await this.#codec.setMeta({ version: VERSION, type: TYPE, user: this.#usermeta }, () => this.#data);
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -61,11 +61,11 @@ export class TreeDB<D, U = null> {
     get(target: ListOf<string>): TreeItemOf<D>[];
     get(target: ListOr<string>): TreeItemOf<D> | undefined | TreeItemOf<D>[] {
         if (typeof target === "string") {
-            return this.data[target];
+            return this.#data[target];
         }
         const results: TreeItemOf<D>[] = [];
         for (const id of target) {
-            const item = this.data[id];
+            const item = this.#data[id];
             if (item) results.push(item);
         }
         return results;
@@ -80,31 +80,31 @@ export class TreeDB<D, U = null> {
             for (const entry of dataOrItems) {
                 const id = crypto.randomUUID();
                 const item: TreeItemOf<D> = { id, type: "treeitem", data: entry.data, parent: entry.parent, children: [] };
-                this.data[id] = item;
-                this.indexRecord(id, entry.data);
+                this.#data[id] = item;
+                this.#indexRecord(id, entry.data);
                 if (entry.parent !== null) {
-                    const parentItem = this.data[entry.parent];
+                    const parentItem = this.#data[entry.parent];
                     if (parentItem) parentItem.children.push(id);
                 } else {
-                    this.rootIds.add(id);
+                    this.#rootIds.add(id);
                 }
                 created.push(item);
             }
         } else {
             const id = crypto.randomUUID();
             const item: TreeItemOf<D> = { id, type: "treeitem", data: dataOrItems, parent: parent!, children: [] };
-            this.data[id] = item;
-            this.indexRecord(id, dataOrItems);
+            this.#data[id] = item;
+            this.#indexRecord(id, dataOrItems);
             if (parent !== null) {
-                const parentItem = this.data[parent!];
+                const parentItem = this.#data[parent!];
                 if (parentItem) parentItem.children.push(id);
             } else {
-                this.rootIds.add(id);
+                this.#rootIds.add(id);
             }
             created.push(item);
         }
 
-        await this.codec.insert(created, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.#codec.insert(created, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
         return Array.isArray(dataOrItems) ? created : created[0];
     }
 
@@ -115,56 +115,56 @@ export class TreeDB<D, U = null> {
         const items: TreeItemOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
-            const existing = this.data[idOrPayload];
+            const existing = this.#data[idOrPayload];
             if (!existing) return undefined;
             const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
-            this.deindexRecord(idOrPayload, existing.data);
+            this.#deindexRecord(idOrPayload, existing.data);
             existing.data = newData;
-            this.indexRecord(idOrPayload, newData);
-            await this.codec.update([existing], () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+            this.#indexRecord(idOrPayload, newData);
+            await this.#codec.update([existing], () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: D, item: TreeItemOf<D>) => D;
             for (const id of idOrPayload) {
-                const existing = this.data[id];
+                const existing = this.#data[id];
                 if (!existing) continue;
                 const newData = updater(existing.data, existing);
-                this.deindexRecord(id, existing.data);
+                this.#deindexRecord(id, existing.data);
                 existing.data = newData;
-                this.indexRecord(id, newData);
+                this.#indexRecord(id, newData);
                 items.push(existing);
             }
         } else {
             for (const [id, d] of Object.entries(idOrPayload)) {
-                const existing = this.data[id];
+                const existing = this.#data[id];
                 if (!existing) continue;
-                this.deindexRecord(id, existing.data);
+                this.#deindexRecord(id, existing.data);
                 existing.data = d as D;
-                this.indexRecord(id, d as D);
+                this.#indexRecord(id, d as D);
                 items.push(existing);
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.#codec.update(items, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
         return items;
     }
 
     async move(id: string, newParent: string | null): Promise<TreeItemOf<D> | undefined> {
-        const item = this.data[id];
+        const item = this.#data[id];
         if (!item) return undefined;
         if (item.parent === newParent) return item;
 
-        detach(this.data, id);
-        this.rootIds.delete(id);
+        detach(this.#data, id);
+        this.#rootIds.delete(id);
         item.parent = newParent;
         if (newParent !== null) {
-            const newParentItem = this.data[newParent];
+            const newParentItem = this.#data[newParent];
             if (newParentItem) newParentItem.children.push(id);
         } else {
-            this.rootIds.add(id);
+            this.#rootIds.add(id);
         }
 
-        await this.codec.struct([item], () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.#codec.struct([item], () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
         return item;
     }
 
@@ -178,28 +178,28 @@ export class TreeDB<D, U = null> {
         const structChanged: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
-            const item = this.data[id];
+            const item = this.#data[id];
             if (!item) continue;
 
             // orphan children as roots
             for (const childId of item.children) {
-                const child = this.data[childId];
+                const child = this.#data[childId];
                 if (child) {
                     child.parent = null;
-                    this.rootIds.add(childId);
+                    this.#rootIds.add(childId);
                     structChanged.push(child);
                 }
             }
 
-            detach(this.data, id);
-            this.rootIds.delete(id);
-            this.deindexRecord(id, item.data);
-            delete this.data[id];
+            detach(this.#data, id);
+            this.#rootIds.delete(id);
+            this.#deindexRecord(id, item.data);
+            delete this.#data[id];
             removed.push(item);
         }
 
-        if (structChanged.length > 0) await this.codec.struct(structChanged, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
-        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (structChanged.length > 0) await this.#codec.struct(structChanged, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
+        if (removed.length > 0) await this.#codec.delete(removed, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -212,35 +212,35 @@ export class TreeDB<D, U = null> {
         const structChanged: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
-            const item = this.data[id];
+            const item = this.#data[id];
             if (!item) continue;
 
             const parentId = item.parent;
 
             // reparent children to this node's parent
             for (const childId of item.children) {
-                const child = this.data[childId];
+                const child = this.#data[childId];
                 if (child) {
                     child.parent = parentId;
                     if (parentId !== null) {
-                        const parent = this.data[parentId];
+                        const parent = this.#data[parentId];
                         if (parent) parent.children.push(childId);
                     } else {
-                        this.rootIds.add(childId);
+                        this.#rootIds.add(childId);
                     }
                     structChanged.push(child);
                 }
             }
 
-            detach(this.data, id);
-            this.rootIds.delete(id);
-            this.deindexRecord(id, item.data);
-            delete this.data[id];
+            detach(this.#data, id);
+            this.#rootIds.delete(id);
+            this.#deindexRecord(id, item.data);
+            delete this.#data[id];
             removed.push(item);
         }
 
-        if (structChanged.length > 0) await this.codec.struct(structChanged, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
-        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (structChanged.length > 0) await this.#codec.struct(structChanged, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
+        if (removed.length > 0) await this.#codec.delete(removed, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -252,31 +252,31 @@ export class TreeDB<D, U = null> {
         const removed: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
-            const item = this.data[id];
+            const item = this.#data[id];
             if (!item) continue;
 
-            detach(this.data, id);
-            this.rootIds.delete(id);
-            this.deindexRecord(id, item.data);
-            delete this.data[id];
+            detach(this.#data, id);
+            this.#rootIds.delete(id);
+            this.#deindexRecord(id, item.data);
+            delete this.#data[id];
             removed.push(item);
 
             // collect and remove all descendants
             const stack = [...item.children];
             while (stack.length > 0) {
                 const descId = stack.pop()!;
-                const desc = this.data[descId];
+                const desc = this.#data[descId];
                 if (!desc) continue;
                 for (let i = desc.children.length - 1; i >= 0; i--) {
                     stack.push(desc.children[i]);
                 }
-                this.deindexRecord(descId, desc.data);
-                delete this.data[descId];
+                this.#deindexRecord(descId, desc.data);
+                delete this.#data[descId];
                 removed.push(desc);
             }
         }
 
-        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.#codec.delete(removed, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -288,17 +288,17 @@ export class TreeDB<D, U = null> {
         const removed: TreeItemOf<D>[] = [];
 
         for (const id of ids) {
-            const item = this.data[id];
+            const item = this.#data[id];
             if (!item || item.children.length > 0) continue;
 
-            detach(this.data, id);
-            this.rootIds.delete(id);
-            this.deindexRecord(id, item.data);
-            delete this.data[id];
+            detach(this.#data, id);
+            this.#rootIds.delete(id);
+            this.#deindexRecord(id, item.data);
+            delete this.#data[id];
             removed.push(item);
         }
 
-        if (removed.length > 0) await this.codec.delete(removed, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.#codec.delete(removed, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
 
         return typeof target === "string" ? removed[0] : removed;
     }
@@ -308,80 +308,84 @@ export class TreeDB<D, U = null> {
     addIndex<T>(lens: ($: PathLens<D>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        if (this.indexLenses[key]) return;
-        this.indexLenses[key] = lens;
-        this.indices.create(segments);
-        for (const [id, item] of Object.entries(this.data)) {
-            const value = Lens.get(item.data as D, lens as any);
-            if (value !== undefined) this.indices.index(key, value, id);
+        if (this.#indexLenses[key]) return;
+        this.#indexLenses[key] = lens;
+        this.#indices.create(segments);
+        for (const [id, item] of Object.entries(this.#data)) {
+            const value = Lens.get((item as TreeItemOf<D>).data as D, lens as any);
+            if (value !== undefined) this.#indices.index(key, value, id);
         }
     }
 
     dropIndex<T>(lens: ($: PathLens<D>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        delete this.indexLenses[key];
-        this.indices.drop(segments);
+        delete this.#indexLenses[key];
+        this.#indices.drop(segments);
+    }
+
+    getIndices(): { [path: string]: string[] } {
+        return this.#indices.dump();
     }
 
     // --- Index maintenance (private) ---
 
-    private indexRecord(id: string, data: D): void {
-        for (const [key, lens] of Object.entries(this.indexLenses)) {
+    #indexRecord(id: string, data: D): void {
+        for (const [key, lens] of Object.entries(this.#indexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.indices.index(key, value, id);
+            if (value !== undefined) this.#indices.index(key, value, id);
         }
     }
 
-    private deindexRecord(id: string, data: D): void {
-        for (const [key, lens] of Object.entries(this.indexLenses)) {
+    #deindexRecord(id: string, data: D): void {
+        for (const [key, lens] of Object.entries(this.#indexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.indices.deindex(key, value, id);
+            if (value !== undefined) this.#indices.deindex(key, value, id);
         }
     }
 
     // --- Chain starters → pipeline ---
     where: {
         <T>(lens: ($: SelectorLens<D> & TreeMeta & LogicalOps) => Predicate<T> | PredicateResult): TreePipeline<D, "multi">;
-    } = ((predFn: Function) => createPipeline(this, { type: "where", predFn })) as any;
+    } = ((predFn: Function) => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "where", predFn })) as any;
     select: {
         (target: string): TreePipeline<D, "single">;
         (target: ListOf<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => {
-        if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
-        return createPipeline(this, { type: "select", ids: [...target] });
+        if (typeof target === "string") return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "selectOne", id: target });
+        return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "select", ids: [...target] });
     }) as any;
     roots: {
         (): TreePipeline<D, "multi">;
-    } = (() => createPipeline(this, { type: "roots" })) as any;
+    } = (() => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "roots" })) as any;
     deep: {
         (): TreePipeline<D, "multi">;
-    } = (() => createPipeline(this, { type: "deep" })) as any;
+    } = (() => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "deep" })) as any;
     wide: {
         (): TreePipeline<D, "multi">;
-    } = (() => createPipeline(this, { type: "wide" })) as any;
+    } = (() => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "wide" })) as any;
     ancestorsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<string>) => createPipeline(this, { type: "ancestors", ids: normalizeIds(target) })) as any;
+    } = ((target: ListOr<string>) => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "ancestors", ids: normalizeIds(target) })) as any;
     childrenOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<string>) => createPipeline(this, { type: "children", ids: normalizeIds(target) })) as any;
+    } = ((target: ListOr<string>) => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "children", ids: normalizeIds(target) })) as any;
     parentOf: {
         (target: string): TreePipeline<D, "single">;
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: string | ListOr<string>) => {
-        if (typeof target === "string") return createPipeline(this, { type: "parentOne", id: target });
-        return createPipeline(this, { type: "parent", ids: normalizeIds(target) });
+        if (typeof target === "string") return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "parentOne", id: target });
+        return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "parent", ids: normalizeIds(target) });
     }) as any;
     deepDescendantsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<string>) => createPipeline(this, { type: "deepDescendants", ids: normalizeIds(target) })) as any;
+    } = ((target: ListOr<string>) => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "deepDescendants", ids: normalizeIds(target) })) as any;
     wideDescendantsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<string>) => createPipeline(this, { type: "wideDescendants", ids: normalizeIds(target) })) as any;
+    } = ((target: ListOr<string>) => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "wideDescendants", ids: normalizeIds(target) })) as any;
     siblingsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
-    } = ((target: ListOr<string>) => createPipeline(this, { type: "siblings", ids: normalizeIds(target) })) as any;
+    } = ((target: ListOr<string>) => createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "siblings", ids: normalizeIds(target) })) as any;
 
     // --- Set operations ---
 
@@ -393,19 +397,19 @@ export class TreeDB<D, U = null> {
             }
             return acc;
         });
-        return createPipeline(this, { type: "ids", ids: [...result] }) as any;
+        return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "ids", ids: [...result] }) as any;
     }
 
     union(...pipelines: TreePipeline<D, any>[]): TreePipeline<D, "multi"> {
         const seen = new Set<string>();
         for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as TreeItemOf<D>).id);
-        return createPipeline(this, { type: "ids", ids: [...seen] }) as any;
+        return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "ids", ids: [...seen] }) as any;
     }
 
     exclusion(from: TreePipeline<D, any>, ...subtract: TreePipeline<D, any>[]): TreePipeline<D, "multi"> {
         const base = new Set<string>((from as any)[RESOLVE]().map((i: { id: string }) => i.id));
         for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as TreeItemOf<D>).id);
-        return createPipeline(this, { type: "ids", ids: [...base] }) as any;
+        return createPipeline(this, this.#data, this.#rootIds, this.#indices, { type: "ids", ids: [...base] }) as any;
     }
 }
 
@@ -495,14 +499,13 @@ function evalWhereForItem<D>(predFn: Function, item: TreeItemOf<D>, data: TreeOf
     return Lens.match(item.data, predFn, metaFor(item, data));
 }
 
-function tryIndexAccelerate<D>(predFn: Function, db: TreeDB<D, any>): Set<string> | null {
+function tryIndexAccelerate<D>(predFn: Function, indices: IndexStore): Set<string> | null {
     const probed = Lens.probe(predFn);
     if (!probed) return null;
 
     const { path, operator, operand, operand2 } = probed;
 
     const pathKey = stringifyIndex(path);
-    const indices = (db as any).indices as IndexStore;
     if (!indices.keys().includes(pathKey)) return null;
 
     if (operator.startsWith("!")) return null;
@@ -601,10 +604,8 @@ function resolveTraversal<D>(items: TreeItemOf<D>[], opType: string, data: TreeO
     return result;
 }
 
-function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
+function createPipeline<D>(db: TreeDB<D, any>, data: TreeOf<D>, rootIds: Set<string>, indices: IndexStore, seed: PipelineSeed): any {
     const ops: PipelineOp[] = [];
-    const data = (db as any).data as TreeOf<D>;
-    const rootIds = (db as any).rootIds as Set<string>;
 
     function resolve(): TreeItemOf<D>[] {
         switch (seed.type) {
@@ -643,7 +644,7 @@ function createPipeline<D>(db: TreeDB<D, any>, seed: PipelineSeed): any {
             case "select":
                 return seed.ids.map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
             case "where": {
-                const indexed = tryIndexAccelerate(seed.predFn, db);
+                const indexed = tryIndexAccelerate(seed.predFn, indices);
                 if (indexed) {
                     const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as TreeItemOf<D>[];
                     return candidates.filter((item) => evalWhereForItem(seed.predFn, item, data));

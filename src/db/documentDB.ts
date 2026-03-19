@@ -13,31 +13,31 @@ const TYPE = "documents";
 const VERSION = 1;
 
 export class DocumentDB<D, U = null> {
-    private data: DocumentsOf<D> = {};
-    private usermeta: U | null = null;
-    private codec: Codec<DocumentOf<D>, DBMeta<U | null>>;
-    private indices = new IndexStore();
-    private indexLenses: { [serializedKey: string]: Function } = {};
+    #data: DocumentsOf<D> = {};
+    #usermeta: U | null = null;
+    #codec: Codec<DocumentOf<D>, DBMeta<U | null>>;
+    #indices = new IndexStore();
+    #indexLenses: { [serializedKey: string]: Function } = {};
 
     constructor(codec: Codec<DocumentOf<D>, DBMeta<U | null>>) {
-        this.codec = codec;
-        this.usermeta = null;
+        this.#codec = codec;
+        this.#usermeta = null;
     }
 
     async load() {
-        const [data, meta] = await this.codec.load();
-        this.data = data;
-        this.usermeta = meta?.user ?? null;
-        return this.usermeta;
+        const [data, meta] = await this.#codec.load();
+        this.#data = data;
+        this.#usermeta = meta?.user ?? null;
+        return this.#usermeta;
     }
 
     getMeta() {
-        return this.usermeta;
+        return this.#usermeta;
     }
 
     async setMeta(value: U) {
-        this.usermeta = value;
-        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, () => this.data);
+        this.#usermeta = value;
+        await this.#codec.setMeta({ version: VERSION, type: TYPE, user: this.#usermeta }, () => this.#data);
     }
 
     // --- Direct methods (bypass pipeline) ---
@@ -46,12 +46,12 @@ export class DocumentDB<D, U = null> {
     get(target: ListOf<string>): DocumentOf<D>[];
     get(target: ListOr<string>): DocumentOf<D> | undefined | DocumentOf<D>[] {
         if (typeof target === "string") {
-            return this.data[target];
+            return this.#data[target];
         }
         const ids = target instanceof Set ? target : target;
         const results: DocumentOf<D>[] = [];
         for (const id of ids) {
-            const item = this.data[id];
+            const item = this.#data[id];
             if (item) results.push(item);
         }
         return results;
@@ -64,38 +64,38 @@ export class DocumentDB<D, U = null> {
         const items: DocumentOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
-            const existing = this.data[idOrPayload];
+            const existing = this.#data[idOrPayload];
             if (!existing) return undefined;
             const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: D, meta: DocumentOf<D>) => D)(existing.data, existing) : (dataOrUpdater as D);
-            this.deindexRecord(idOrPayload, existing.data);
+            this.#deindexRecord(idOrPayload, existing.data);
             existing.data = newData;
-            this.indexRecord(idOrPayload, newData);
+            this.#indexRecord(idOrPayload, newData);
             items.push(existing);
-            await this.codec.update(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+            await this.#codec.update(items, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: D, meta: DocumentOf<D>) => D;
             for (const id of idOrPayload) {
-                const existing = this.data[id];
+                const existing = this.#data[id];
                 if (!existing) continue;
                 const newData = updater(existing.data, existing);
-                this.deindexRecord(id, existing.data);
+                this.#deindexRecord(id, existing.data);
                 existing.data = newData;
-                this.indexRecord(id, newData);
+                this.#indexRecord(id, newData);
                 items.push(existing);
             }
         } else {
             for (const [id, d] of Object.entries(idOrPayload)) {
-                const existing = this.data[id];
+                const existing = this.#data[id];
                 if (!existing) continue;
-                this.deindexRecord(id, existing.data);
+                this.#deindexRecord(id, existing.data);
                 existing.data = d as D;
-                this.indexRecord(id, d as D);
+                this.#indexRecord(id, d as D);
                 items.push(existing);
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.#codec.update(items, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
         return items;
     }
 
@@ -108,19 +108,19 @@ export class DocumentDB<D, U = null> {
             for (const d of data) {
                 const id = crypto.randomUUID();
                 const member: DocumentOf<D> = { id, type: "document", data: d };
-                this.data[id] = member;
-                this.indexRecord(id, d);
+                this.#data[id] = member;
+                this.#indexRecord(id, d);
                 items.push(member);
             }
         } else {
             const id = crypto.randomUUID();
             const member: DocumentOf<D> = { id, type: "document", data };
-            this.data[id] = member;
-            this.indexRecord(id, data);
+            this.#data[id] = member;
+            this.#indexRecord(id, data);
             items.push(member);
         }
 
-        await this.codec.insert(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.#codec.insert(items, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
         return Array.isArray(data) ? items : items[0];
     }
 
@@ -130,25 +130,25 @@ export class DocumentDB<D, U = null> {
         const items: DocumentOf<D>[] = [];
 
         if (typeof target === "string") {
-            const item = this.data[target];
+            const item = this.#data[target];
             if (item) {
-                this.deindexRecord(target, item.data);
-                delete this.data[target];
-                await this.codec.delete([item], () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+                this.#deindexRecord(target, item.data);
+                delete this.#data[target];
+                await this.#codec.delete([item], () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
             }
             return item;
         } else {
             for (const id of target) {
-                const item = this.data[id];
+                const item = this.#data[id];
                 if (item) {
-                    this.deindexRecord(id, item.data);
-                    delete this.data[id];
+                    this.#deindexRecord(id, item.data);
+                    delete this.#data[id];
                     items.push(item);
                 }
             }
         }
 
-        if (items.length > 0) await this.codec.delete(items, () => this.data, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.#codec.delete(items, () => this.#data, { version: VERSION, type: TYPE, user: this.#usermeta });
         return items;
     }
 
@@ -157,52 +157,56 @@ export class DocumentDB<D, U = null> {
     addIndex<T>(lens: ($: PathLens<D>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        if (this.indexLenses[key]) return;
-        this.indexLenses[key] = lens;
-        this.indices.create(segments);
-        for (const [id, item] of Object.entries(this.data)) {
-            const value = Lens.get(item.data as D, lens as any);
-            if (value !== undefined) this.indices.index(key, value, id);
+        if (this.#indexLenses[key]) return;
+        this.#indexLenses[key] = lens;
+        this.#indices.create(segments);
+        for (const [id, item] of Object.entries(this.#data)) {
+            const value = Lens.get((item as DocumentOf<D>).data as D, lens as any);
+            if (value !== undefined) this.#indices.index(key, value, id);
         }
     }
 
     dropIndex<T>(lens: ($: PathLens<D>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        delete this.indexLenses[key];
-        this.indices.drop(segments);
+        delete this.#indexLenses[key];
+        this.#indices.drop(segments);
+    }
+
+    getIndices(): { [path: string]: string[] } {
+        return this.#indices.dump();
     }
 
     // --- Index maintenance (private) ---
 
-    private indexRecord(id: string, data: D): void {
-        for (const [key, lens] of Object.entries(this.indexLenses)) {
+    #indexRecord(id: string, data: D): void {
+        for (const [key, lens] of Object.entries(this.#indexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.indices.index(key, value, id);
+            if (value !== undefined) this.#indices.index(key, value, id);
         }
     }
 
-    private deindexRecord(id: string, data: D): void {
-        for (const [key, lens] of Object.entries(this.indexLenses)) {
+    #deindexRecord(id: string, data: D): void {
+        for (const [key, lens] of Object.entries(this.#indexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.indices.deindex(key, value, id);
+            if (value !== undefined) this.#indices.deindex(key, value, id);
         }
     }
 
     // --- Chain starters → pipeline ---
     where: {
         <T>(lens: ($: SelectorLens<D> & DocumentMeta & LogicalOps) => Predicate<T> | PredicateResult): DocumentPipeline<D, "multi">;
-    } = ((predFn: Function) => createPipeline(this, { type: "where", predFn })) as any;
+    } = ((predFn: Function) => createPipeline(this, { type: "where", predFn }, this.#data, this.#indices)) as any;
     select: {
         (target: string): DocumentPipeline<D, "single">;
         (target: ListOf<string>): DocumentPipeline<D, "multi">;
     } = ((target: ListOr<string>) => {
-        if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
-        return createPipeline(this, { type: "select", ids: [...target] });
+        if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target }, this.#data, this.#indices);
+        return createPipeline(this, { type: "select", ids: [...target] }, this.#data, this.#indices);
     }) as any;
     all: {
         (): DocumentPipeline<D, "multi">;
-    } = (() => createPipeline(this, { type: "all" })) as any;
+    } = (() => createPipeline(this, { type: "all" }, this.#data, this.#indices)) as any;
 
     // --- Set operations ---
 
@@ -214,19 +218,19 @@ export class DocumentDB<D, U = null> {
             }
             return acc;
         });
-        return createPipeline(this, { type: "ids", ids: [...result] }) as any;
+        return createPipeline(this, { type: "ids", ids: [...result] }, this.#data, this.#indices) as any;
     }
 
     union(...pipelines: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
         const seen = new Set<string>();
         for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as DocumentOf<D>).id);
-        return createPipeline(this, { type: "ids", ids: [...seen] }) as any;
+        return createPipeline(this, { type: "ids", ids: [...seen] }, this.#data, this.#indices) as any;
     }
 
     exclusion(from: DocumentPipeline<D, any>, ...subtract: DocumentPipeline<D, any>[]): DocumentPipeline<D, "multi"> {
         const base = new Set<string>((from as any)[RESOLVE]().map((i: { id: string }) => i.id));
         for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as DocumentOf<D>).id);
-        return createPipeline(this, { type: "ids", ids: [...base] }) as any;
+        return createPipeline(this, { type: "ids", ids: [...base] }, this.#data, this.#indices) as any;
     }
 }
 
@@ -261,14 +265,13 @@ function evalWhereForItem<D>(predFn: Function, item: DocumentOf<D>): boolean {
     return Lens.match(item.data, predFn, { ID: item.id });
 }
 
-function tryIndexAccelerate<D>(predFn: Function, db: DocumentDB<D>): Set<string> | null {
+function tryIndexAccelerate<D>(predFn: Function, indices: IndexStore): Set<string> | null {
     const probed = Lens.probe(predFn);
     if (!probed) return null;
 
     const { path, operator, operand, operand2 } = probed;
 
     const pathKey = stringifyIndex(path);
-    const indices = (db as any).indices as IndexStore;
     if (!indices.keys().includes(pathKey)) return null;
 
     if (operator.startsWith("!")) return null;
@@ -283,9 +286,8 @@ function tryIndexAccelerate<D>(predFn: Function, db: DocumentDB<D>): Set<string>
     return indexOp(indices, pathKey, operand) as Set<string>;
 }
 
-function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
+function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed, data: DocumentsOf<D>, indices: IndexStore): any {
     const ops: PipelineOp[] = [];
-    const data = (db as any).data as DocumentsOf<D>;
 
     function resolve(): DocumentOf<D>[] {
         switch (seed.type) {
@@ -298,7 +300,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
             case "select":
                 return seed.ids.map((id) => data[id]).filter(Boolean) as DocumentOf<D>[];
             case "where": {
-                const indexed = tryIndexAccelerate(seed.predFn, db);
+                const indexed = tryIndexAccelerate(seed.predFn, indices);
                 if (indexed) {
                     const candidates = [...indexed].map((id) => data[id]).filter(Boolean) as DocumentOf<D>[];
                     return candidates.filter((item) => evalWhereForItem(seed.predFn, item));

@@ -18,46 +18,46 @@ export type GraphStep<N, L> = [GraphNodeOf<N>, GraphLinkOf<L>, GraphNodeOf<N>];
 export type GraphPath<N, L> = GraphStep<N, L>[];
 
 export class GraphDB<N, L, U = null> {
-    private nodeMap: { [id: string]: GraphNodeOf<N> } = {};
-    private linkMap: { [id: string]: GraphLinkOf<L> } = {};
-    private usermeta: U | null = null;
-    private codec: Codec<GraphRecord<N, L>, DBMeta<U | null>>;
-    private nodeIndices = new IndexStore();
-    private nodeIndexLenses: { [serializedKey: string]: Function } = {};
-    private linkIndices = new IndexStore();
-    private linkIndexLenses: { [serializedKey: string]: Function } = {};
+    #nodeMap: { [id: string]: GraphNodeOf<N> } = {};
+    #linkMap: { [id: string]: GraphLinkOf<L> } = {};
+    #usermeta: U | null = null;
+    #codec: Codec<GraphRecord<N, L>, DBMeta<U | null>>;
+    #nodeIndices = new IndexStore();
+    #nodeIndexLenses: { [serializedKey: string]: Function } = {};
+    #linkIndices = new IndexStore();
+    #linkIndexLenses: { [serializedKey: string]: Function } = {};
 
     constructor(codec: Codec<GraphRecord<N, L>, DBMeta<U | null>>) {
-        this.codec = codec;
-        this.usermeta = null;
+        this.#codec = codec;
+        this.#usermeta = null;
     }
 
-    private get records(): { [id: string]: GraphRecord<N, L> } {
-        return { ...this.nodeMap, ...this.linkMap };
+    get #records(): { [id: string]: GraphRecord<N, L> } {
+        return { ...this.#nodeMap, ...this.#linkMap };
     }
 
     async load() {
-        const [records, meta] = await this.codec.load();
-        this.nodeMap = {};
-        this.linkMap = {};
+        const [records, meta] = await this.#codec.load();
+        this.#nodeMap = {};
+        this.#linkMap = {};
         for (const record of Object.values(records)) {
             if (record.type === "node") {
-                this.nodeMap[record.id] = record as GraphNodeOf<N>;
+                this.#nodeMap[record.id] = record as GraphNodeOf<N>;
             } else {
-                this.linkMap[record.id] = record as GraphLinkOf<L>;
+                this.#linkMap[record.id] = record as GraphLinkOf<L>;
             }
         }
-        this.usermeta = meta?.user ?? null;
-        return this.usermeta;
+        this.#usermeta = meta?.user ?? null;
+        return this.#usermeta;
     }
 
     getMeta() {
-        return this.usermeta;
+        return this.#usermeta;
     }
 
     async setMeta(value: U) {
-        this.usermeta = value;
-        await this.codec.setMeta({ version: VERSION, type: TYPE, user: this.usermeta }, () => this.records);
+        this.#usermeta = value;
+        await this.#codec.setMeta({ version: VERSION, type: TYPE, user: this.#usermeta }, () => this.#records);
     }
 
     // --- Node CRUD ---
@@ -65,10 +65,10 @@ export class GraphDB<N, L, U = null> {
     get(target: string): GraphNodeOf<N> | undefined;
     get(target: ListOf<string>): GraphNodeOf<N>[];
     get(target: string | ListOf<string>): GraphNodeOf<N> | undefined | GraphNodeOf<N>[] {
-        if (typeof target === "string") return this.nodeMap[target];
+        if (typeof target === "string") return this.#nodeMap[target];
         const results: GraphNodeOf<N>[] = [];
         for (const id of target) {
-            const item = this.nodeMap[id];
+            const item = this.#nodeMap[id];
             if (item) results.push(item);
         }
         return results;
@@ -83,19 +83,19 @@ export class GraphDB<N, L, U = null> {
             for (const d of data) {
                 const id = crypto.randomUUID();
                 const node: GraphNodeOf<N> = { id, type: "node", in: [], out: [], data: d };
-                this.nodeMap[id] = node;
-                this.indexNodeRecord(id, d);
+                this.#nodeMap[id] = node;
+                this.#indexNodeRecord(id, d);
                 created.push(node);
             }
         } else {
             const id = crypto.randomUUID();
             const node: GraphNodeOf<N> = { id, type: "node", in: [], out: [], data };
-            this.nodeMap[id] = node;
-            this.indexNodeRecord(id, data);
+            this.#nodeMap[id] = node;
+            this.#indexNodeRecord(id, data);
             created.push(node);
         }
 
-        await this.codec.insert(created, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.#codec.insert(created, () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
         return Array.isArray(data) ? created : created[0];
     }
 
@@ -106,37 +106,37 @@ export class GraphDB<N, L, U = null> {
         const items: GraphNodeOf<N>[] = [];
 
         if (typeof idOrPayload === "string") {
-            const existing = this.nodeMap[idOrPayload];
+            const existing = this.#nodeMap[idOrPayload];
             if (!existing) return undefined;
             const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: N, item: GraphNodeOf<N>) => N)(existing.data, existing) : (dataOrUpdater as N);
-            this.deindexNodeRecord(idOrPayload, existing.data);
+            this.#deindexNodeRecord(idOrPayload, existing.data);
             existing.data = newData;
-            this.indexNodeRecord(idOrPayload, newData);
-            await this.codec.update([existing], () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+            this.#indexNodeRecord(idOrPayload, newData);
+            await this.#codec.update([existing], () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: N, item: GraphNodeOf<N>) => N;
             for (const id of idOrPayload) {
-                const existing = this.nodeMap[id];
+                const existing = this.#nodeMap[id];
                 if (!existing) continue;
                 const newData = updater(existing.data, existing);
-                this.deindexNodeRecord(id, existing.data);
+                this.#deindexNodeRecord(id, existing.data);
                 existing.data = newData;
-                this.indexNodeRecord(id, newData);
+                this.#indexNodeRecord(id, newData);
                 items.push(existing);
             }
         } else {
             for (const [id, d] of Object.entries(idOrPayload)) {
-                const existing = this.nodeMap[id];
+                const existing = this.#nodeMap[id];
                 if (!existing) continue;
-                this.deindexNodeRecord(id, existing.data);
+                this.#deindexNodeRecord(id, existing.data);
                 existing.data = d as N;
-                this.indexNodeRecord(id, d as N);
+                this.#indexNodeRecord(id, d as N);
                 items.push(existing);
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.#codec.update(items, () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
         return items;
     }
 
@@ -148,22 +148,22 @@ export class GraphDB<N, L, U = null> {
         const removedLinks: GraphLinkOf<L>[] = [];
 
         for (const id of ids) {
-            const node = this.nodeMap[id];
+            const node = this.#nodeMap[id];
             if (!node) continue;
 
             // Cascade-delete connected links
             for (const linkId of [...node.in, ...node.out]) {
-                const removed = this.removeLinkInternal(linkId);
+                const removed = this.#removeLinkInternal(linkId);
                 if (removed) removedLinks.push(removed);
             }
 
-            this.deindexNodeRecord(id, node.data);
-            delete this.nodeMap[id];
+            this.#deindexNodeRecord(id, node.data);
+            delete this.#nodeMap[id];
             removedNodes.push(node);
         }
 
-        if (removedLinks.length > 0) await this.codec.delete(removedLinks, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
-        if (removedNodes.length > 0) await this.codec.delete(removedNodes, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removedLinks.length > 0) await this.#codec.delete(removedLinks, () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
+        if (removedNodes.length > 0) await this.#codec.delete(removedNodes, () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
 
         return { nodes: removedNodes, links: removedLinks };
     }
@@ -173,10 +173,10 @@ export class GraphDB<N, L, U = null> {
     getLink(target: string): GraphLinkOf<L> | undefined;
     getLink(target: ListOf<string>): GraphLinkOf<L>[];
     getLink(target: string | ListOf<string>): GraphLinkOf<L> | undefined | GraphLinkOf<L>[] {
-        if (typeof target === "string") return this.linkMap[target];
+        if (typeof target === "string") return this.#linkMap[target];
         const results: GraphLinkOf<L>[] = [];
         for (const id of target) {
-            const item = this.linkMap[id];
+            const item = this.#linkMap[id];
             if (item) results.push(item);
         }
         return results;
@@ -185,15 +185,15 @@ export class GraphDB<N, L, U = null> {
     async connect(from: string, to: string, data: L): Promise<GraphLinkOf<L>> {
         const id = crypto.randomUUID();
         const link: GraphLinkOf<L> = { id, type: "link", from, to, data };
-        this.linkMap[id] = link;
-        this.indexLinkRecord(id, data);
+        this.#linkMap[id] = link;
+        this.#indexLinkRecord(id, data);
 
-        const fromNode = this.nodeMap[from];
+        const fromNode = this.#nodeMap[from];
         if (fromNode) fromNode.out.push(id);
-        const toNode = this.nodeMap[to];
+        const toNode = this.#nodeMap[to];
         if (toNode) toNode.in.push(id);
 
-        await this.codec.insert([link], () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        await this.#codec.insert([link], () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
         return link;
     }
 
@@ -207,44 +207,44 @@ export class GraphDB<N, L, U = null> {
         const items: GraphLinkOf<L>[] = [];
 
         if (typeof idOrPayload === "string") {
-            const existing = this.linkMap[idOrPayload];
+            const existing = this.#linkMap[idOrPayload];
             if (!existing) return undefined;
-            const fromNode = this.nodeMap[existing.from];
-            const toNode = this.nodeMap[existing.to];
+            const fromNode = this.#nodeMap[existing.from];
+            const toNode = this.#nodeMap[existing.to];
             const newData =
                 typeof dataOrUpdater === "function"
                     ? (dataOrUpdater as (prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L)(existing.data, existing, fromNode, toNode)
                     : (dataOrUpdater as L);
-            this.deindexLinkRecord(idOrPayload, existing.data);
+            this.#deindexLinkRecord(idOrPayload, existing.data);
             existing.data = newData;
-            this.indexLinkRecord(idOrPayload, newData);
-            await this.codec.update([existing], () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+            this.#indexLinkRecord(idOrPayload, newData);
+            await this.#codec.update([existing], () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
             return existing;
         } else if (idOrPayload instanceof Set || Array.isArray(idOrPayload)) {
             const updater = dataOrUpdater as (prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L;
             for (const id of idOrPayload) {
-                const existing = this.linkMap[id];
+                const existing = this.#linkMap[id];
                 if (!existing) continue;
-                const fromNode = this.nodeMap[existing.from];
-                const toNode = this.nodeMap[existing.to];
+                const fromNode = this.#nodeMap[existing.from];
+                const toNode = this.#nodeMap[existing.to];
                 const newData = updater(existing.data, existing, fromNode, toNode);
-                this.deindexLinkRecord(id, existing.data);
+                this.#deindexLinkRecord(id, existing.data);
                 existing.data = newData;
-                this.indexLinkRecord(id, newData);
+                this.#indexLinkRecord(id, newData);
                 items.push(existing);
             }
         } else {
             for (const [id, d] of Object.entries(idOrPayload)) {
-                const existing = this.linkMap[id];
+                const existing = this.#linkMap[id];
                 if (!existing) continue;
-                this.deindexLinkRecord(id, existing.data);
+                this.#deindexLinkRecord(id, existing.data);
                 existing.data = d as L;
-                this.indexLinkRecord(id, d as L);
+                this.#indexLinkRecord(id, d as L);
                 items.push(existing);
             }
         }
 
-        if (items.length > 0) await this.codec.update(items, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (items.length > 0) await this.#codec.update(items, () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
         return items;
     }
 
@@ -255,17 +255,17 @@ export class GraphDB<N, L, U = null> {
         const removed: GraphLinkOf<L>[] = [];
 
         for (const id of ids) {
-            const link = this.removeLinkInternal(id);
+            const link = this.#removeLinkInternal(id);
             if (link) removed.push(link);
         }
 
-        if (removed.length > 0) await this.codec.delete(removed, () => this.records, { version: VERSION, type: TYPE, user: this.usermeta });
+        if (removed.length > 0) await this.#codec.delete(removed, () => this.#records, { version: VERSION, type: TYPE, user: this.#usermeta });
         return typeof target === "string" ? removed[0] : removed;
     }
 
     async disconnect(nodeA: string, nodeB: string): Promise<GraphLinkOf<L>[]> {
         const toRemove: string[] = [];
-        for (const [id, link] of Object.entries(this.linkMap)) {
+        for (const [id, link] of Object.entries(this.#linkMap)) {
             if ((link.from === nodeA && link.to === nodeB) || (link.from === nodeB && link.to === nodeA)) {
                 toRemove.push(id);
             }
@@ -278,7 +278,7 @@ export class GraphDB<N, L, U = null> {
         const ids = typeof target === "string" ? [target] : [...target];
         const linkIds = new Set<string>();
         for (const id of ids) {
-            const node = this.nodeMap[id];
+            const node = this.#nodeMap[id];
             if (!node) continue;
             for (const linkId of node.in) linkIds.add(linkId);
             for (const linkId of node.out) linkIds.add(linkId);
@@ -291,7 +291,7 @@ export class GraphDB<N, L, U = null> {
         const ids = typeof target === "string" ? [target] : [...target];
         const linkIds = new Set<string>();
         for (const id of ids) {
-            const node = this.nodeMap[id];
+            const node = this.#nodeMap[id];
             if (node) for (const linkId of node.in) linkIds.add(linkId);
         }
         if (linkIds.size === 0) return [];
@@ -302,7 +302,7 @@ export class GraphDB<N, L, U = null> {
         const ids = typeof target === "string" ? [target] : [...target];
         const linkIds = new Set<string>();
         for (const id of ids) {
-            const node = this.nodeMap[id];
+            const node = this.#nodeMap[id];
             if (node) for (const linkId of node.out) linkIds.add(linkId);
         }
         if (linkIds.size === 0) return [];
@@ -311,24 +311,24 @@ export class GraphDB<N, L, U = null> {
 
     // --- Internal: link removal ---
 
-    private removeLinkInternal(linkId: string): GraphLinkOf<L> | undefined {
-        const link = this.linkMap[linkId];
+    #removeLinkInternal(linkId: string): GraphLinkOf<L> | undefined {
+        const link = this.#linkMap[linkId];
         if (!link) return undefined;
 
-        const fromNode = this.nodeMap[link.from];
+        const fromNode = this.#nodeMap[link.from];
         if (fromNode) {
             const idx = fromNode.out.indexOf(linkId);
             if (idx !== -1) fromNode.out.splice(idx, 1);
         }
 
-        const toNode = this.nodeMap[link.to];
+        const toNode = this.#nodeMap[link.to];
         if (toNode) {
             const idx = toNode.in.indexOf(linkId);
             if (idx !== -1) toNode.in.splice(idx, 1);
         }
 
-        this.deindexLinkRecord(linkId, link.data);
-        delete this.linkMap[linkId];
+        this.#deindexLinkRecord(linkId, link.data);
+        delete this.#linkMap[linkId];
         return link;
     }
 
@@ -337,101 +337,109 @@ export class GraphDB<N, L, U = null> {
     addNodeIndex<T>(lens: ($: PathLens<N>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        if (this.nodeIndexLenses[key]) return;
-        this.nodeIndexLenses[key] = lens;
-        this.nodeIndices.create(segments);
-        for (const [id, node] of Object.entries(this.nodeMap)) {
+        if (this.#nodeIndexLenses[key]) return;
+        this.#nodeIndexLenses[key] = lens;
+        this.#nodeIndices.create(segments);
+        for (const [id, node] of Object.entries(this.#nodeMap)) {
             const value = Lens.get(node.data as N, lens as any);
-            if (value !== undefined) this.nodeIndices.index(key, value, id);
+            if (value !== undefined) this.#nodeIndices.index(key, value, id);
         }
     }
 
     dropNodeIndex<T>(lens: ($: PathLens<N>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        delete this.nodeIndexLenses[key];
-        this.nodeIndices.drop(segments);
+        delete this.#nodeIndexLenses[key];
+        this.#nodeIndices.drop(segments);
     }
 
     addLinkIndex<T>(lens: ($: PathLens<L>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        if (this.linkIndexLenses[key]) return;
-        this.linkIndexLenses[key] = lens;
-        this.linkIndices.create(segments);
-        for (const [id, link] of Object.entries(this.linkMap)) {
+        if (this.#linkIndexLenses[key]) return;
+        this.#linkIndexLenses[key] = lens;
+        this.#linkIndices.create(segments);
+        for (const [id, link] of Object.entries(this.#linkMap)) {
             const value = Lens.get(link.data as L, lens as any);
-            if (value !== undefined) this.linkIndices.index(key, value, id);
+            if (value !== undefined) this.#linkIndices.index(key, value, id);
         }
     }
 
     dropLinkIndex<T>(lens: ($: PathLens<L>) => PathLens<T>): void {
         const segments = Lens.path(lens);
         const key = stringifyIndex(segments);
-        delete this.linkIndexLenses[key];
-        this.linkIndices.drop(segments);
+        delete this.#linkIndexLenses[key];
+        this.#linkIndices.drop(segments);
+    }
+
+    getNodeIndices(): { [path: string]: string[] } {
+        return this.#nodeIndices.dump();
+    }
+
+    getLinkIndices(): { [path: string]: string[] } {
+        return this.#linkIndices.dump();
     }
 
     // --- Index maintenance (private) ---
 
-    private indexNodeRecord(id: string, data: N): void {
-        for (const [key, lens] of Object.entries(this.nodeIndexLenses)) {
+    #indexNodeRecord(id: string, data: N): void {
+        for (const [key, lens] of Object.entries(this.#nodeIndexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.nodeIndices.index(key, value, id);
+            if (value !== undefined) this.#nodeIndices.index(key, value, id);
         }
     }
 
-    private deindexNodeRecord(id: string, data: N): void {
-        for (const [key, lens] of Object.entries(this.nodeIndexLenses)) {
+    #deindexNodeRecord(id: string, data: N): void {
+        for (const [key, lens] of Object.entries(this.#nodeIndexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.nodeIndices.deindex(key, value, id);
+            if (value !== undefined) this.#nodeIndices.deindex(key, value, id);
         }
     }
 
-    private indexLinkRecord(id: string, data: L): void {
-        for (const [key, lens] of Object.entries(this.linkIndexLenses)) {
+    #indexLinkRecord(id: string, data: L): void {
+        for (const [key, lens] of Object.entries(this.#linkIndexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.linkIndices.index(key, value, id);
+            if (value !== undefined) this.#linkIndices.index(key, value, id);
         }
     }
 
-    private deindexLinkRecord(id: string, data: L): void {
-        for (const [key, lens] of Object.entries(this.linkIndexLenses)) {
+    #deindexLinkRecord(id: string, data: L): void {
+        for (const [key, lens] of Object.entries(this.#linkIndexLenses)) {
             const value = Lens.get(data, lens as any);
-            if (value !== undefined) this.linkIndices.deindex(key, value, id);
+            if (value !== undefined) this.#linkIndices.deindex(key, value, id);
         }
     }
 
     // --- Chain starters → node pipeline ---
 
-    nodes: { (): GraphNodePipeline<N, L, "multi"> } = (() => createNodePipeline(this, { type: "all" })) as any;
+    nodes: { (): GraphNodePipeline<N, L, "multi"> } = (() => createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "all" })) as any;
 
     nodesWhere: {
         <T>(lens: ($: SelectorLens<N> & GraphNodeMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphNodePipeline<N, L, "multi">;
-    } = ((predFn: Function) => createNodePipeline(this, { type: "where", predFn })) as any;
+    } = ((predFn: Function) => createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "where", predFn })) as any;
 
     node: {
         (target: string): GraphNodePipeline<N, L, "single">;
         (target: ListOf<string>): GraphNodePipeline<N, L, "multi">;
     } = ((target: string | ListOf<string>) => {
-        if (typeof target === "string") return createNodePipeline(this, { type: "selectOne", id: target });
-        return createNodePipeline(this, { type: "select", ids: [...target] });
+        if (typeof target === "string") return createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "selectOne", id: target });
+        return createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "select", ids: [...target] });
     }) as any;
 
     // --- Chain starters → link pipeline ---
 
-    links: { (): GraphLinkPipeline<N, L, "multi"> } = (() => createLinkPipeline(this, { type: "all" })) as any;
+    links: { (): GraphLinkPipeline<N, L, "multi"> } = (() => createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "all" })) as any;
 
     linksWhere: {
         <T>(lens: ($: SelectorLens<L> & GraphLinkMeta & LogicalOps) => Predicate<T> | PredicateResult): GraphLinkPipeline<N, L, "multi">;
-    } = ((predFn: Function) => createLinkPipeline(this, { type: "where", predFn })) as any;
+    } = ((predFn: Function) => createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "where", predFn })) as any;
 
     link: {
         (target: string): GraphLinkPipeline<N, L, "single">;
         (target: ListOf<string>): GraphLinkPipeline<N, L, "multi">;
     } = ((target: string | ListOf<string>) => {
-        if (typeof target === "string") return createLinkPipeline(this, { type: "selectOne", id: target });
-        return createLinkPipeline(this, { type: "select", ids: [...target] });
+        if (typeof target === "string") return createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "selectOne", id: target });
+        return createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "select", ids: [...target] });
     }) as any;
 
     // --- Set operations ---
@@ -447,8 +455,8 @@ export class GraphDB<N, L, U = null> {
         // Determine if node or link pipeline by checking first result
         const firstItems = (pipelines[0] as any)[RESOLVE]();
         const isLink = firstItems.length > 0 && "from" in firstItems[0];
-        if (isLink) return createLinkPipeline(this, { type: "ids", ids: [...result] }) as any;
-        return createNodePipeline(this, { type: "ids", ids: [...result] }) as any;
+        if (isLink) return createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "ids", ids: [...result] }) as any;
+        return createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "ids", ids: [...result] }) as any;
     }
 
     union(...pipelines: (GraphNodePipeline<N, L, any> | GraphLinkPipeline<N, L, any>)[]): GraphNodePipeline<N, L, "multi"> | GraphLinkPipeline<N, L, "multi"> {
@@ -456,8 +464,8 @@ export class GraphDB<N, L, U = null> {
         for (const p of pipelines) for (const item of (p as any)[RESOLVE]()) seen.add((item as { id: string }).id);
         const firstItems = (pipelines[0] as any)[RESOLVE]();
         const isLink = firstItems.length > 0 && "from" in firstItems[0];
-        if (isLink) return createLinkPipeline(this, { type: "ids", ids: [...seen] }) as any;
-        return createNodePipeline(this, { type: "ids", ids: [...seen] }) as any;
+        if (isLink) return createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "ids", ids: [...seen] }) as any;
+        return createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "ids", ids: [...seen] }) as any;
     }
 
     exclusion(
@@ -468,8 +476,8 @@ export class GraphDB<N, L, U = null> {
         for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as { id: string }).id);
         const firstItems = (from as any)[RESOLVE]();
         const isLink = firstItems.length > 0 && "from" in firstItems[0];
-        if (isLink) return createLinkPipeline(this, { type: "ids", ids: [...base] }) as any;
-        return createNodePipeline(this, { type: "ids", ids: [...base] }) as any;
+        if (isLink) return createLinkPipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "ids", ids: [...base] }) as any;
+        return createNodePipeline(this, this.#nodeMap, this.#linkMap, this.#nodeIndices, this.#linkIndices,{ type: "ids", ids: [...base] }) as any;
     }
 
     // --- Join ---
@@ -592,12 +600,11 @@ function evalLinkWhere<L>(predFn: Function, link: GraphLinkOf<L>): boolean {
     return Lens.match(link.data, predFn, linkMetaFor(link));
 }
 
-function tryNodeIndexAccelerate<N, L>(predFn: Function, db: GraphDB<N, L, any>): Set<string> | null {
+function tryNodeIndexAccelerate(predFn: Function, indices: IndexStore): Set<string> | null {
     const probed = Lens.probe(predFn);
     if (!probed) return null;
     const { path, operator, operand, operand2 } = probed;
     const pathKey = stringifyIndex(path);
-    const indices = (db as any).nodeIndices as IndexStore;
     if (!indices.keys().includes(pathKey)) return null;
     if (operator.startsWith("!")) return null;
     if (operator.endsWith("|") || operator.endsWith("&")) return null;
@@ -607,12 +614,11 @@ function tryNodeIndexAccelerate<N, L>(predFn: Function, db: GraphDB<N, L, any>):
     return indexOp(indices, pathKey, operand) as Set<string>;
 }
 
-function tryLinkIndexAccelerate<N, L>(predFn: Function, db: GraphDB<N, L, any>): Set<string> | null {
+function tryLinkIndexAccelerate(predFn: Function, indices: IndexStore): Set<string> | null {
     const probed = Lens.probe(predFn);
     if (!probed) return null;
     const { path, operator, operand, operand2 } = probed;
     const pathKey = stringifyIndex(path);
-    const indices = (db as any).linkIndices as IndexStore;
     if (!indices.keys().includes(pathKey)) return null;
     if (operator.startsWith("!")) return null;
     if (operator.endsWith("|") || operator.endsWith("&")) return null;
@@ -784,10 +790,8 @@ function findPaths<N, L>(
 // Node Pipeline
 // ------------------------------------------------------------
 
-function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed): any {
+function createNodePipeline<N, L>(db: GraphDB<N, L, any>, nodeData: { [id: string]: GraphNodeOf<N> }, linkData: { [id: string]: GraphLinkOf<L> }, nodeIndices: IndexStore, linkIndices: IndexStore, seed: NodePipelineSeed): any {
     const ops: NodePipelineOp[] = [];
-    const nodeData = (db as any).nodeMap as { [id: string]: GraphNodeOf<N> };
-    const linkData = (db as any).linkMap as { [id: string]: GraphLinkOf<L> };
 
     function resolve(): GraphNodeOf<N>[] {
         switch (seed.type) {
@@ -801,7 +805,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             case "ids":
                 return seed.ids.map((id) => nodeData[id]).filter(Boolean) as GraphNodeOf<N>[];
             case "where": {
-                const indexed = tryNodeIndexAccelerate(seed.predFn, db);
+                const indexed = tryNodeIndexAccelerate(seed.predFn, nodeIndices);
                 if (indexed) {
                     const candidates = [...indexed].map((id) => nodeData[id]).filter(Boolean) as GraphNodeOf<N>[];
                     return candidates.filter((node) => evalNodeWhere(seed.predFn, node));
@@ -985,7 +989,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             for (const n of items) {
                 for (const id of [...n.in, ...n.out]) linkIds.add(id);
             }
-            return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...linkIds] });
         },
         out() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
@@ -993,7 +997,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             for (const n of items) {
                 for (const id of n.out) linkIds.add(id);
             }
-            return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...linkIds] });
         },
         in() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
@@ -1001,39 +1005,39 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             for (const n of items) {
                 for (const id of n.in) linkIds.add(id);
             }
-            return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...linkIds] });
         },
 
         // --- Deep/wide link traversals (mode switch to link pipeline) ---
         deepDownstreamLinks() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const result = resolveDeepWideLinks(items, "downstream", "deep", linkData, nodeData);
-            return createLinkPipeline(db, { type: "ids", ids: result.map((l) => l.id) });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: result.map((l) => l.id) });
         },
         deepUpstreamLinks() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const result = resolveDeepWideLinks(items, "upstream", "deep", linkData, nodeData);
-            return createLinkPipeline(db, { type: "ids", ids: result.map((l) => l.id) });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: result.map((l) => l.id) });
         },
         deepLinks() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const result = resolveDeepWideLinks(items, "any", "deep", linkData, nodeData);
-            return createLinkPipeline(db, { type: "ids", ids: result.map((l) => l.id) });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: result.map((l) => l.id) });
         },
         wideDownstreamLinks() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const result = resolveDeepWideLinks(items, "downstream", "wide", linkData, nodeData);
-            return createLinkPipeline(db, { type: "ids", ids: result.map((l) => l.id) });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: result.map((l) => l.id) });
         },
         wideUpstreamLinks() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const result = resolveDeepWideLinks(items, "upstream", "wide", linkData, nodeData);
-            return createLinkPipeline(db, { type: "ids", ids: result.map((l) => l.id) });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: result.map((l) => l.id) });
         },
         wideLinks() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const result = resolveDeepWideLinks(items, "any", "wide", linkData, nodeData);
-            return createLinkPipeline(db, { type: "ids", ids: result.map((l) => l.id) });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: result.map((l) => l.id) });
         },
 
         // --- Mode switch to path pipeline ---
@@ -1046,7 +1050,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
                 linkData,
                 nodeData,
             );
-            return createPathPipeline(db, paths);
+            return createPathPipeline(db, nodeData, linkData, nodeIndices, linkIndices, paths);
         },
         pathFrom(target: string | Function) {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
@@ -1057,7 +1061,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
                 linkData,
                 nodeData,
             );
-            return createPathPipeline(db, paths);
+            return createPathPipeline(db, nodeData, linkData, nodeIndices, linkIndices, paths);
         },
         pathBetween(target: string | Function) {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
@@ -1068,7 +1072,7 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
                 linkData,
                 nodeData,
             );
-            return createPathPipeline(db, paths);
+            return createPathPipeline(db, nodeData, linkData, nodeIndices, linkIndices, paths);
         },
 
         // --- Read terminals ---
@@ -1148,10 +1152,8 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
 // Link Pipeline
 // ------------------------------------------------------------
 
-function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed): any {
+function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, nodeData: { [id: string]: GraphNodeOf<N> }, linkData: { [id: string]: GraphLinkOf<L> }, nodeIndices: IndexStore, linkIndices: IndexStore, seed: LinkPipelineSeed): any {
     const ops: LinkPipelineOp[] = [];
-    const linkData = (db as any).linkMap as { [id: string]: GraphLinkOf<L> };
-    const nodeData = (db as any).nodeMap as { [id: string]: GraphNodeOf<N> };
 
     function resolve(): GraphLinkOf<L>[] {
         switch (seed.type) {
@@ -1165,7 +1167,7 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
             case "ids":
                 return seed.ids.map((id) => linkData[id]).filter(Boolean) as GraphLinkOf<L>[];
             case "where": {
-                const indexed = tryLinkIndexAccelerate(seed.predFn, db);
+                const indexed = tryLinkIndexAccelerate(seed.predFn, linkIndices);
                 if (indexed) {
                     const candidates = [...indexed].map((id) => linkData[id]).filter(Boolean) as GraphLinkOf<L>[];
                     return candidates.filter((link) => evalLinkWhere(seed.predFn, link));
@@ -1271,13 +1273,13 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
             const items = pipeline[RESOLVE]() as GraphLinkOf<L>[];
             const nodeIds = new Set<string>();
             for (const link of items) nodeIds.add(link.from);
-            return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
+            return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...nodeIds] });
         },
         to() {
             const items = pipeline[RESOLVE]() as GraphLinkOf<L>[];
             const nodeIds = new Set<string>();
             for (const link of items) nodeIds.add(link.to);
-            return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
+            return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...nodeIds] });
         },
         nodes() {
             const items = pipeline[RESOLVE]() as GraphLinkOf<L>[];
@@ -1286,7 +1288,7 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
                 nodeIds.add(link.from);
                 nodeIds.add(link.to);
             }
-            return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
+            return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...nodeIds] });
         },
 
         // --- Read terminals ---
@@ -1385,13 +1387,11 @@ function syntheticPathMeta<N, L>(path: GraphPath<N, L>): { data: { length: numbe
     };
 }
 
-function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPath<N, L>[]): any {
+function createPathPipeline<N, L>(db: GraphDB<N, L, any>, nodeData: { [id: string]: GraphNodeOf<N> }, linkData: { [id: string]: GraphLinkOf<L> }, nodeIndices: IndexStore, linkIndices: IndexStore, initialPaths: GraphPath<N, L>[]): any {
     let paths = initialPaths;
     let isSinglePath = false;
     let isSingleStep = false;
     let steps: GraphStep<N, L>[] | null = null; // populated when step() narrows SC
-    const nodeData = (db as any).nodeMap as { [id: string]: GraphNodeOf<N> };
-    const linkData = (db as any).linkMap as { [id: string]: GraphLinkOf<L> };
 
     function execute(): GraphPath<N, L>[] | GraphPath<N, L> | GraphStep<N, L>[] | GraphStep<N, L> | undefined {
         if (isSingleStep && isSinglePath) {
@@ -1569,8 +1569,8 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
                 }
             }
             const ids = [...nodeIds];
-            if (isSinglePath) return createNodePipeline(db, ids.length === 1 ? { type: "selectOne", id: ids[0] } : { type: "ids", ids });
-            return createNodePipeline(db, { type: "ids", ids });
+            if (isSinglePath) return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,ids.length === 1 ? { type: "selectOne", id: ids[0] } : { type: "ids", ids });
+            return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids });
         },
         linkAt(n: number) {
             const linkIds = new Set<string>();
@@ -1581,8 +1581,8 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
                 }
             }
             const ids = [...linkIds];
-            if (isSinglePath) return createLinkPipeline(db, ids.length === 1 ? { type: "selectOne", id: ids[0] } : { type: "ids", ids });
-            return createLinkPipeline(db, { type: "ids", ids });
+            if (isSinglePath) return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,ids.length === 1 ? { type: "selectOne", id: ids[0] } : { type: "ids", ids });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids });
         },
         origin() {
             return pipeline.nodeAt(0);
@@ -1598,7 +1598,7 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
                     nodeIds.add(path[path.length - 1][2].id);
                 }
             }
-            return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
+            return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...nodeIds] });
         },
 
         // --- Mode switches ---
@@ -1610,14 +1610,14 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
                     nodeIds.add(s[2].id);
                 }
             }
-            return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
+            return createNodePipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...nodeIds] });
         },
         links() {
             const linkIds = new Set<string>();
             for (const path of paths) {
                 for (const s of path) linkIds.add(s[1].id);
             }
-            return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
+            return createLinkPipeline(db, nodeData, linkData, nodeIndices, linkIndices,{ type: "ids", ids: [...linkIds] });
         },
 
         // --- Read terminals ---

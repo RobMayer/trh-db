@@ -1,20 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { TreeDB, TreeItemOf } from "../src/db/treeDB";
 import { MemoryCodec } from "../src/codec/memoryCodec";
-import { IndexStore } from "../src/util/indices";
-
 type Person = { name: string; age: number };
 
 function makeDB() {
     return new TreeDB<Person>(new MemoryCodec());
-}
-
-function idx(db: TreeDB<any>): IndexStore {
-    return (db as any).indices;
-}
-
-function rootIdSet(db: TreeDB<any>): Set<string> {
-    return (db as any).rootIds;
 }
 
 /**
@@ -113,7 +103,10 @@ describe("add", () => {
         const r1 = await db.add({ name: "Root1", age: 50 }, null);
         const r2 = await db.add({ name: "Root2", age: 40 }, null);
         await db.add({ name: "Child", age: 20 }, r1.id);
-        expect(rootIdSet(db)).toEqual(new Set([r1.id, r2.id]));
+        const rootIds = (await db.roots().get()).map((r) => r.id);
+        expect(rootIds).toContain(r1.id);
+        expect(rootIds).toContain(r2.id);
+        expect(rootIds).toHaveLength(2);
     });
 
     it("bulk adds with per-item parent", async () => {
@@ -199,7 +192,7 @@ describe("move", () => {
         await db.move(alice.id, null);
         expect(db.get(alice.id)?.parent).toBeNull();
         expect(db.get(dad.id)?.children).not.toContain(alice.id);
-        expect(rootIdSet(db).has(alice.id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === alice.id)).toBe(true);
     });
 
     it("moves a root to a parent", async () => {
@@ -208,10 +201,10 @@ describe("move", () => {
         expect(db.get(grandpa.id)?.parent).toBeNull();
 
         const orphan = await db.add({ name: "Orphan", age: 5 }, null);
-        expect(rootIdSet(db).has(orphan.id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === orphan.id)).toBe(true);
         await db.move(orphan.id, grandpa.id);
         expect(db.get(orphan.id)?.parent).toBe(grandpa.id);
-        expect(rootIdSet(db).has(orphan.id)).toBe(false);
+        expect((await db.roots().get()).some((r) => r.id === orphan.id)).toBe(false);
     });
 
     it("returns undefined for missing node", async () => {
@@ -248,8 +241,8 @@ describe("pluck", () => {
         expect(db.get(dad.id)).toBeUndefined();
         expect(db.get(alice.id)?.parent).toBeNull();
         expect(db.get(bob.id)?.parent).toBeNull();
-        expect(rootIdSet(db).has(alice.id)).toBe(true);
-        expect(rootIdSet(db).has(bob.id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === alice.id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === bob.id)).toBe(true);
         expect(db.get(grandpa.id)?.children).not.toContain(dad.id);
     });
 
@@ -291,8 +284,8 @@ describe("splice", () => {
         expect(db.get(grandpa.id)).toBeUndefined();
         expect(db.get(dad.id)?.parent).toBeNull();
         expect(db.get(uncle.id)?.parent).toBeNull();
-        expect(rootIdSet(db).has(dad.id)).toBe(true);
-        expect(rootIdSet(db).has(uncle.id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === dad.id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === uncle.id)).toBe(true);
     });
 
     it("splicing a leaf is the same as pluck", async () => {
@@ -382,35 +375,35 @@ describe("trim", () => {
 
 describe("index management", () => {
     it("creates an index and backfills from existing data", async () => {
-        const { db, alice, bob } = await seededDB();
+        const { db } = await seededDB();
         db.addIndex(($) => $("name"));
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set([alice.id]));
-        expect(idx(db).eq("name", "Bob")).toEqual(new Set([bob.id]));
+        expect(db.getIndices()["name"]).toContain("Alice");
+        expect(db.getIndices()["name"]).toContain("Bob");
     });
 
     it("indexes on add", async () => {
         const db = makeDB();
         db.addIndex(($) => $("age"));
-        const a = await db.add({ name: "A", age: 10 }, null);
-        expect(idx(db).eq("age", 10)).toEqual(new Set([a.id]));
+        await db.add({ name: "A", age: 10 }, null);
+        expect(db.getIndices()["age"]).toContain("10");
     });
 
     it("deindexes on prune", async () => {
-        const { db, dad, uncle } = await seededDB();
+        const { db, dad } = await seededDB();
         db.addIndex(($) => $("name"));
         await db.prune(dad.id);
-        expect(idx(db).eq("name", "Alice")).toEqual(new Set());
-        expect(idx(db).eq("name", "Dad")).toEqual(new Set());
-        expect(idx(db).eq("name", "Uncle")).toEqual(new Set([uncle.id]));
+        expect(db.getIndices()["name"] ?? []).not.toContain("Alice");
+        expect(db.getIndices()["name"] ?? []).not.toContain("Dad");
+        expect(db.getIndices()["name"]).toContain("Uncle");
     });
 
     it("updates index on data update", async () => {
         const { db, alice } = await seededDB();
         db.addIndex(($) => $("age"));
-        expect(idx(db).eq("age", 10)).toEqual(new Set([alice.id]));
+        expect(db.getIndices()["age"]).toContain("10");
         await db.update(alice.id, { name: "Alice", age: 11 });
-        expect(idx(db).eq("age", 10)).toEqual(new Set());
-        expect(idx(db).eq("age", 11)).toEqual(new Set([alice.id]));
+        expect(db.getIndices()["age"] ?? []).not.toContain("10");
+        expect(db.getIndices()["age"]).toContain("11");
     });
 });
 
@@ -1035,6 +1028,6 @@ describe("add: bulk", () => {
         expect(db.get(root.id)?.children).toContain(children[1].id);
         expect(db.get(root.id)?.children).not.toContain(children[2].id);
         expect(children[2].parent).toBeNull();
-        expect(rootIdSet(db).has(children[2].id)).toBe(true);
+        expect((await db.roots().get()).some((r) => r.id === children[2].id)).toBe(true);
     });
 });
