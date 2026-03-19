@@ -194,3 +194,10 @@ Codecs handle persistence. Three built-in:
 - [Predicates](docs/predicates.md) — operator reference
 - [Custom Accessors](docs/custom-accessors.md) — LensNav protocol and symbol protocols
 - [Codecs](docs/codecs.md) — persistence layer
+
+## Future enhancements
+
+- SortedTreeDB
+- QuadTreeDB
+- OctTreeDB
+- SocketedGraphDB
