@@ -1,6 +1,6 @@
 {
     "name": "@trh/db",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/RobMayer/trh-db.git"
