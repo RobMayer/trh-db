@@ -152,7 +152,12 @@ Pipelines are lazy — nothing executes until a terminal is called.
 Predicates use tuple syntax: `[subject, operator, operand]`.
 
 ```ts
-[$("age"), ">", 18][($("name"), "%", "Ali")][($("roles"), "#", "admin")][($("age"), "><", 18, 65)][($("active"), "?")][($.ID, "=", someId)]; // comparison // string contains // array/Set has // range (exclusive) // truthiness // meta field access
+.where(($) => [$("age"), ">", 18])           // comparison
+.where(($) => [$("name"), "%", "Ali"])        // string contains
+.where(($) => [$("roles"), "#", "admin"])     // array/Set has
+.where(($) => [$("age"), "><", 18, 65])       // range (exclusive)
+.where(($) => [$("active"), "?"])             // truthiness
+.where(($) => [$.ID, "=", someId])            // meta field access
 ```
 
 See [docs/predicates.md](docs/predicates.md) for the full operator reference.

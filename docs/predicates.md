@@ -20,7 +20,8 @@ The `$` is a lens that navigates into the item's data. `$("name")` accesses the 
 | `!==`    | Strict not equal                            |
 
 ```ts
-[$("name"), "=", "Alice"][($("status"), "!=", "inactive")];
+.where(($) => [$("name"), "=", "Alice"])
+.where(($) => [$("status"), "!=", "inactive"])
 ```
 
 ### Comparison (3-arity)
@@ -37,7 +38,8 @@ The `$` is a lens that navigates into the item's data. `$("name")` accesses the 
 | `!<=`    | Not less than or equal    |
 
 ```ts
-[$("age"), ">", 18][($("score"), "<=", 100)];
+.where(($) => [$("age"), ">", 18])
+.where(($) => [$("score"), "<=", 100])
 ```
 
 Comparison uses the `Compare` symbol protocol when available, `Intl.Collator` for natural string sorting (so `"file2"` sorts before `"file10"`), and standard numeric comparison for numbers.
@@ -54,7 +56,9 @@ Comparison uses the `Compare` symbol protocol when available, `Intl.Collator` fo
 | `_%^`    | Ends with (case-insensitive)          |
 
 ```ts
-[$("name"), "%", "Ali"][($("email"), "_%", ".com")][($("title"), "%^_", "the")]; // contains "Ali" // ends with ".com" // starts with "the" (case-insensitive)
+.where(($) => [$("name"), "%", "Ali"])       // contains "Ali"
+.where(($) => [$("email"), "_%", ".com"])    // ends with ".com"
+.where(($) => [$("title"), "%^_", "the"])    // starts with "the" (case-insensitive)
 ```
 
 Numbers are coerced to strings for matching. Booleans, arrays, null, and undefined are rejected (return false).
@@ -66,7 +70,8 @@ Numbers are coerced to strings for matching. Booleans, arrays, null, and undefin
 | `~`      | Regex test (accepts string or RegExp) |
 
 ```ts
-[$("email"), "~", /^[a-z]+@/][($("code"), "~", "^[A-Z]{3}")];
+.where(($) => [$("email"), "~", /^[a-z]+@/])
+.where(($) => [$("code"), "~", "^[A-Z]{3}"])
 ```
 
 Invalid regex strings return false (no throw). Non-string subjects return false.
@@ -79,7 +84,8 @@ Invalid regex strings return false (no throw). Non-string subjects return false.
 | `!#`     | Does not have                                                    |
 
 ```ts
-[$("roles"), "#", "admin"][($("tags"), "#", "important")]; // array includes // Set has
+.where(($) => [$("roles"), "#", "admin"])     // array includes
+.where(($) => [$("tags"), "#", "important"])  // Set has
 ```
 
 ### Type Check (3-arity)
@@ -107,7 +113,8 @@ Type strings use a hierarchical system:
 Prefix matching: `"number"` matches both native numbers and BigInt. `"object"` matches all object subtypes.
 
 ```ts
-[$("value"), ":", "string"][($("data"), ":", "object/array")];
+.where(($) => [$("value"), ":", "string"])
+.where(($) => [$("data"), ":", "object/array"])
 ```
 
 ### Range (4-arity)
@@ -118,7 +125,8 @@ Prefix matching: `"number"` matches both native numbers and BigInt. `"object"` m
 | `>=<`    | Inclusive range: `lo <= value <= hi` |
 
 ```ts
-[$("age"), "><", 18, 65][($("score"), ">=<", 0, 100)]; // 18 < age < 65 // 0 <= score <= 100
+.where(($) => [$("age"), "><", 18, 65])       // 18 < age < 65
+.where(($) => [$("score"), ">=<", 0, 100])    // 0 <= score <= 100
 ```
 
 Operand order is auto-corrected: `[$("age"), "><", 65, 18]` works identically.
@@ -131,7 +139,8 @@ Operand order is auto-corrected: `[$("age"), "><", 65, 18]` works identically.
 | `!?`     | Falsy   |
 
 ```ts
-[$("active"), "?"][($("deletedAt"), "!?")]; // is truthy // is falsy/null/undefined
+.where(($) => [$("active"), "?"])       // is truthy
+.where(($) => [$("deletedAt"), "!?"])   // is falsy/null/undefined
 ```
 
 ## Operator Modifiers
@@ -144,7 +153,9 @@ Most operators support suffixes that change how the operand is evaluated:
 | `&`    | All — operand is an array, passes if ALL elements match  |
 
 ```ts
-[$("role"), "=|", ["admin", "editor"]][($("tags"), "#&", ["read", "write"])][($("name"), "~|", [/^A/, /^B/])]; // role is admin OR editor // tags includes BOTH read AND write // name matches either regex
+.where(($) => [$("role"), "=|", ["admin", "editor"]])   // role is admin OR editor
+.where(($) => [$("tags"), "#&", ["read", "write"]])      // tags includes BOTH read AND write
+.where(($) => [$("name"), "~|", [/^A/, /^B/]])           // name matches either regex
 ```
 
 ## Logical Combinators
@@ -211,3 +222,58 @@ db.node(a)
         0,
     ]);
 ```
+
+## Operator Reference
+
+### Comparison and Equality
+
+| Operator | Arity | Meaning                                        |
+| -------- | ----- | ---------------------------------------------- |
+| `=`      | 3     | Equal (loose — uses `Compare`/`Equals` protocol if available) |
+| `!=`     | 3     | Not equal                                      |
+| `==`     | 3     | Strict equal (`===`)                           |
+| `!==`    | 3     | Strict not equal (`!==`)                       |
+| `>`      | 3     | Greater than                                   |
+| `>=`     | 3     | Greater than or equal                          |
+| `<`      | 3     | Less than                                      |
+| `<=`     | 3     | Less than or equal                             |
+| `!>`     | 3     | Not greater than                               |
+| `!>=`    | 3     | Not greater than or equal                      |
+| `!<`     | 3     | Not less than                                  |
+| `!<=`    | 3     | Not less than or equal                         |
+| `><`     | 4     | Exclusive range: `lo < value < hi`             |
+| `>=<`    | 4     | Inclusive range: `lo <= value <= hi`           |
+
+### String and Pattern
+
+| Operator | Arity | Meaning                               |
+| -------- | ----- | ------------------------------------- |
+| `%`      | 3     | Contains substring (case-sensitive)   |
+| `%^`     | 3     | Contains substring (case-insensitive) |
+| `%_`     | 3     | Starts with (case-sensitive)          |
+| `%^_`    | 3     | Starts with (case-insensitive)        |
+| `_%`     | 3     | Ends with (case-sensitive)            |
+| `_%^`    | 3     | Ends with (case-insensitive)          |
+| `~`      | 3     | Regex test (string or `RegExp`)       |
+
+### Membership and Type
+
+| Operator | Arity | Meaning                                                     |
+| -------- | ----- | ----------------------------------------------------------- |
+| `#`      | 3     | Has — array `includes`, Set `has`, or `Contains` protocol   |
+| `!#`     | 3     | Does not have                                               |
+| `:`      | 3     | Type check — hierarchical type string (`"object/array"` etc.) |
+
+### Unary
+
+| Operator | Arity | Meaning              |
+| -------- | ----- | -------------------- |
+| `?`      | 2     | Truthy               |
+| `!?`     | 2     | Falsy / null / undefined |
+
+### Modifiers (suffixes on any 3-arity operator)
+
+| Suffix | Meaning                                                    |
+| ------ | ---------------------------------------------------------- |
+| `\|`   | Any — operand is an array, passes if **any** element matches |
+| `&`    | All — operand is an array, passes if **all** elements match  |
