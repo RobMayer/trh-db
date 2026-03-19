@@ -443,7 +443,7 @@ describe("pipeline: roots", () => {
         const { db, grandpa } = await seededDB();
         const result = await db.roots().get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(grandpa.id);
+        expect(result[0].id).toBe(grandpa.id);
     });
 
     it("returns multiple roots", async () => {
@@ -458,7 +458,7 @@ describe("pipeline: deep (all nodes DFS)", () => {
     it("returns all nodes in depth-first order", async () => {
         const { db, grandpa, dad, alice, bob, uncle, charlie } = await seededDB();
         const result = await db.deep().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([grandpa.id, dad.id, alice.id, bob.id, uncle.id, charlie.id]);
     });
 });
@@ -467,7 +467,7 @@ describe("pipeline: wide (all nodes BFS)", () => {
     it("returns all nodes in breadth-first order", async () => {
         const { db, grandpa, dad, uncle, alice, bob, charlie } = await seededDB();
         const result = await db.wide().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([grandpa.id, dad.id, uncle.id, alice.id, bob.id, charlie.id]);
     });
 });
@@ -476,7 +476,7 @@ describe("pipeline: ancestors", () => {
     it("returns ancestors of a node", async () => {
         const { db, alice, dad, grandpa } = await seededDB();
         const result = await db.ancestors(alice.id).get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, grandpa.id]);
     });
 
@@ -491,7 +491,7 @@ describe("pipeline: children", () => {
     it("returns children of a node", async () => {
         const { db, dad, alice, bob } = await seededDB();
         const result = await db.children(dad.id).get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual(expect.arrayContaining([alice.id, bob.id]));
         expect(result).toHaveLength(2);
     });
@@ -521,7 +521,7 @@ describe("pipeline: deepDescendants", () => {
     it("returns descendants in DFS order", async () => {
         const { db, grandpa, dad, alice, bob, uncle, charlie } = await seededDB();
         const result = await db.deepDescendants(grandpa.id).get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, alice.id, bob.id, uncle.id, charlie.id]);
     });
 
@@ -536,7 +536,7 @@ describe("pipeline: wideDescendants", () => {
     it("returns descendants in BFS order", async () => {
         const { db, grandpa, dad, uncle, alice, bob, charlie } = await seededDB();
         const result = await db.wideDescendants(grandpa.id).get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, uncle.id, alice.id, bob.id, charlie.id]);
     });
 });
@@ -546,7 +546,7 @@ describe("pipeline: siblings", () => {
         const { db, alice, bob } = await seededDB();
         const result = await db.siblings(alice.id).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(bob.id);
+        expect(result[0].id).toBe(bob.id);
     });
 
     it("returns siblings of a root (other roots)", async () => {
@@ -554,7 +554,7 @@ describe("pipeline: siblings", () => {
         const other = await db.add({ name: "Other", age: 40 }, null);
         const result = await db.siblings(grandpa.id).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(other.id);
+        expect(result[0].id).toBe(other.id);
     });
 
     it("returns empty for only child", async () => {
@@ -573,7 +573,7 @@ describe("pipeline: where", () => {
         const { db } = await seededDB();
         const result = await db.where(($) => [$("name"), "=", "Alice"]).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].data.name).toBe("Alice");
+        expect(result[0].data.name).toBe("Alice");
     });
 
     it("filters by comparison", async () => {
@@ -595,7 +595,7 @@ describe("pipeline: where", () => {
         const { db, bob } = await seededDB();
         const result = await db.where(($) => [$.ID, "=", bob.id]).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].data.name).toBe("Bob");
+        expect(result[0].data.name).toBe("Bob");
     });
 
     it("filters by $.PARENT meta accessor", async () => {
@@ -609,7 +609,7 @@ describe("pipeline: where", () => {
         db.addIndex(($) => $("name"));
         const result = await db.where(($) => [$("name"), "=", "Charlie"]).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(charlie.id);
+        expect(result[0].id).toBe(charlie.id);
     });
 });
 
@@ -624,7 +624,7 @@ describe("pipeline: sort", () => {
             .deep()
             .sort(($) => $("age"), "asc")
             .get();
-        const ages = (result as any[]).map((r: any) => r.data.age);
+        const ages = result.map((r: any) => r.data.age);
         expect(ages).toEqual([7, 8, 10, 32, 35, 60]);
     });
 
@@ -634,7 +634,7 @@ describe("pipeline: sort", () => {
             .deep()
             .sort(($) => $("name"), "desc")
             .get();
-        const names = (result as any[]).map((r: any) => r.data.name);
+        const names = result.map((r: any) => r.data.name);
         expect(names).toEqual(["Uncle", "Grandpa", "Dad", "Charlie", "Bob", "Alice"]);
     });
 });
@@ -648,8 +648,8 @@ describe("pipeline: slice / paginate / window", () => {
             .slice(1, 3)
             .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.age).toBe(8);
-        expect((result as any[])[1].data.age).toBe(10);
+        expect(result[0].data.age).toBe(8);
+        expect(result[1].data.age).toBe(10);
     });
 
     it("paginates results", async () => {
@@ -666,8 +666,8 @@ describe("pipeline: slice / paginate / window", () => {
             .get();
         expect(page1).toHaveLength(2);
         expect(page2).toHaveLength(2);
-        expect((page1 as any[])[0].data.age).toBe(7);
-        expect((page2 as any[])[0].data.age).toBe(10);
+        expect(page1[0].data.age).toBe(7);
+        expect(page2[0].data.age).toBe(10);
     });
 
     it("windows results", async () => {
@@ -678,8 +678,8 @@ describe("pipeline: slice / paginate / window", () => {
             .window(2, 2)
             .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.age).toBe(10);
-        expect((result as any[])[1].data.age).toBe(32);
+        expect(result[0].data.age).toBe(10);
+        expect(result[1].data.age).toBe(32);
     });
 });
 
@@ -695,7 +695,7 @@ describe("pipeline: first / last / at", () => {
             .sort(($) => $("age"), "asc")
             .first()
             .get();
-        expect((result as any).data.age).toBe(7);
+        expect(result!.data.age).toBe(7);
     });
 
     it("last returns last item", async () => {
@@ -705,7 +705,7 @@ describe("pipeline: first / last / at", () => {
             .sort(($) => $("age"), "asc")
             .last()
             .get();
-        expect((result as any).data.age).toBe(60);
+        expect(result!.data.age).toBe(60);
     });
 
     it("at returns item at index", async () => {
@@ -715,7 +715,7 @@ describe("pipeline: first / last / at", () => {
             .sort(($) => $("age"), "asc")
             .at(2)
             .get();
-        expect((result as any).data.age).toBe(10);
+        expect(result!.data.age).toBe(10);
     });
 
     it("first on empty returns undefined", async () => {
@@ -824,7 +824,7 @@ describe("pipeline: traversal chaining", () => {
     it("select then children", async () => {
         const { db, grandpa, dad, uncle } = await seededDB();
         const result = await db.select(grandpa.id).children().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual(expect.arrayContaining([dad.id, uncle.id]));
         expect(result).toHaveLength(2);
     });
@@ -832,14 +832,14 @@ describe("pipeline: traversal chaining", () => {
     it("select then deepDescendants", async () => {
         const { db, dad, alice, bob } = await seededDB();
         const result = await db.select(dad.id).deepDescendants().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([alice.id, bob.id]);
     });
 
     it("select then ancestors", async () => {
         const { db, alice, dad, grandpa } = await seededDB();
         const result = await db.select(alice.id).ancestors().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, grandpa.id]);
     });
 
@@ -847,14 +847,14 @@ describe("pipeline: traversal chaining", () => {
         const { db, alice, dad } = await seededDB();
         const result = await db.select(alice.id).parent().get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(dad.id);
+        expect(result[0].id).toBe(dad.id);
     });
 
     it("select then siblings", async () => {
         const { db, alice, bob } = await seededDB();
         const result = await db.select(alice.id).siblings().get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(bob.id);
+        expect(result[0].id).toBe(bob.id);
     });
 
     it("chains traversal then where", async () => {
@@ -864,7 +864,7 @@ describe("pipeline: traversal chaining", () => {
             .deepDescendants()
             .where(($) => [$("age"), "<", 10])
             .get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toEqual(expect.arrayContaining([bob.id]));
     });
 
@@ -874,7 +874,7 @@ describe("pipeline: traversal chaining", () => {
             .children(grandpa.id)
             .sort(($) => $("age"), "asc")
             .get();
-        const names = (result as any[]).map((r: any) => r.data.name);
+        const names = result.map((r: any) => r.data.name);
         expect(names).toEqual(["Uncle", "Dad"]);
     });
 });
@@ -899,50 +899,62 @@ describe("set operations", () => {
     describe("intersection", () => {
         it("returns items present in all pipelines", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), ">", 8]),
-                db.where(($) => [$("age"), "<", 35]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), ">", 8]),
+                    db.where(($) => [$("age"), "<", 35]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Alice", "Uncle"]);
         });
 
         it("returns empty when no overlap", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), "<", 8]),
-                db.where(($) => [$("age"), ">", 60]),
-            ).get();
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), "<", 8]),
+                    db.where(($) => [$("age"), ">", 60]),
+                )
+                .get();
             expect(result).toHaveLength(0);
         });
 
         it("supports chaining after intersection", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), ">", 8]),
-                db.where(($) => [$("age"), "<", 35]),
-            ).sort(($) => $("age"), "asc").first().get();
-            expect((result as any).data.name).toBe("Alice");
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), ">", 8]),
+                    db.where(($) => [$("age"), "<", 35]),
+                )
+                .sort(($) => $("age"), "asc")
+                .first()
+                .get();
+            expect(result!.data.name).toBe("Alice");
         });
     });
 
     describe("union", () => {
         it("returns items present in any pipeline", async () => {
             const { db } = await seededDB();
-            const result = await db.union(
-                db.where(($) => [$("age"), "<", 8]),
-                db.where(($) => [$("age"), ">", 35]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .union(
+                    db.where(($) => [$("age"), "<", 8]),
+                    db.where(($) => [$("age"), ">", 35]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Charlie", "Grandpa"]);
         });
 
         it("deduplicates overlapping results", async () => {
             const { db } = await seededDB();
-            const result = await db.union(
-                db.where(($) => [$("age"), ">", 7]),
-                db.where(($) => [$("age"), "<", 60]),
-            ).get();
+            const result = await db
+                .union(
+                    db.where(($) => [$("age"), ">", 7]),
+                    db.where(($) => [$("age"), "<", 60]),
+                )
+                .get();
             expect(result).toHaveLength(6);
         });
     });
@@ -950,22 +962,26 @@ describe("set operations", () => {
     describe("exclusion", () => {
         it("returns items in first pipeline not in second", async () => {
             const { db } = await seededDB();
-            const result = await db.exclusion(
-                db.deep(),
-                db.where(($) => [$("age"), ">", 10]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .exclusion(
+                    db.deep(),
+                    db.where(($) => [$("age"), ">", 10]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Alice", "Bob", "Charlie"]);
         });
 
         it("subtracts multiple pipelines", async () => {
             const { db } = await seededDB();
-            const result = await db.exclusion(
-                db.deep(),
-                db.roots(),
-                db.where(($) => [$("age"), "<", 10]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .exclusion(
+                    db.deep(),
+                    db.roots(),
+                    db.where(($) => [$("age"), "<", 10]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Alice", "Dad", "Uncle"]);
         });
     });
@@ -973,24 +989,29 @@ describe("set operations", () => {
     describe("nesting", () => {
         it("supports nested set operations", async () => {
             const { db } = await seededDB();
-            const result = await db.union(
-                db.roots(),
-                db.intersection(
-                    db.where(($) => [$("age"), ">", 7]),
-                    db.where(($) => [$("age"), "<", 32]),
-                ),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .union(
+                    db.roots(),
+                    db.intersection(
+                        db.where(($) => [$("age"), ">", 7]),
+                        db.where(($) => [$("age"), "<", 32]),
+                    ),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Alice", "Bob", "Grandpa"]);
         });
 
         it("supports traversal chaining after set operations", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), ">", 30]),
-                db.where(($) => [$("age"), "<", 60]),
-            ).children().get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), ">", 30]),
+                    db.where(($) => [$("age"), "<", 60]),
+                )
+                .children()
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Alice", "Bob", "Charlie"]);
         });
     });

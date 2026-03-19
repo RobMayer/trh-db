@@ -33,7 +33,10 @@ describe("get", () => {
 
     it("returns multiple records by id list", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         const result = db.get([a.id, b.id]);
         expect(result).toHaveLength(2);
         expect(result.map((r) => r.id)).toContain(a.id);
@@ -50,7 +53,10 @@ describe("get", () => {
 
     it("accepts a Set of ids", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         const result = db.get(new Set([a.id, b.id]));
         expect(result).toHaveLength(2);
     });
@@ -108,7 +114,11 @@ describe("remove", () => {
 
     it("removes multiple records by list", async () => {
         const db = makeDB();
-        const [a, b, c] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }, { name: "Charlie", age: 35 }]);
+        const [a, b, c] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+            { name: "Charlie", age: 35 },
+        ]);
         const removed = await db.remove([a.id, b.id]);
         expect(removed).toHaveLength(2);
         expect(db.get(a.id)).toBeUndefined();
@@ -126,7 +136,10 @@ describe("remove", () => {
 
     it("accepts a Set of ids", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         await db.remove(new Set([a.id, b.id]));
         expect(db.get(a.id)).toBeUndefined();
         expect(db.get(b.id)).toBeUndefined();
@@ -162,7 +175,10 @@ describe("update", () => {
 
     it("updates a batch via payload object", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         const updated = await db.update({ [a.id]: { name: "Alice", age: 99 }, [b.id]: { name: "Bob", age: 99 } });
         expect(updated).toHaveLength(2);
         expect(db.get(a.id)?.data.age).toBe(99);
@@ -171,7 +187,10 @@ describe("update", () => {
 
     it("updates multiple ids with shared updater", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         await db.update([a.id, b.id], (prev) => ({ ...prev, age: prev.age + 10 }));
         expect(db.get(a.id)?.data.age).toBe(40);
         expect(db.get(b.id)?.data.age).toBe(35);
@@ -179,7 +198,10 @@ describe("update", () => {
 
     it("accepts a Set of ids with updater", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         await db.update(new Set([a.id, b.id]), (prev) => ({ ...prev, age: 0 }));
         expect(db.get(a.id)?.data.age).toBe(0);
         expect(db.get(b.id)?.data.age).toBe(0);
@@ -237,7 +259,10 @@ describe("update", () => {
 describe("addIndex / dropIndex", () => {
     it("creates an index and backfills from existing data", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]);
+        const [a, b] = await db.insert([
+            { name: "Alice", age: 30 },
+            { name: "Bob", age: 25 },
+        ]);
         db.addIndex(($) => $("name"));
         expect(idx(db).eq("name", "Alice")).toEqual(new Set([a.id]));
         expect(idx(db).eq("name", "Bob")).toEqual(new Set([b.id]));
@@ -404,7 +429,7 @@ describe("pipeline: select", () => {
         const { db, alice, charlie } = await seededDB();
         const result = await db.select([alice.id, charlie.id]).get();
         expect(result).toHaveLength(2);
-        expect((result as any[]).map((r: any) => r.id)).toEqual(expect.arrayContaining([alice.id, charlie.id]));
+        expect(result.map((r: any) => r.id)).toEqual(expect.arrayContaining([alice.id, charlie.id]));
     });
 });
 
@@ -425,7 +450,7 @@ describe("pipeline: where", () => {
         const { db } = await seededDB();
         const result = await db.where(($) => [$("name"), "=", "Alice"]).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].data.name).toBe("Alice");
+        expect(result[0].data.name).toBe("Alice");
     });
 
     it("filters by comparison", async () => {
@@ -447,7 +472,7 @@ describe("pipeline: where", () => {
         const { db, bob } = await seededDB();
         const result = await db.where(($) => [$.ID, "=", bob.id]).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].data.name).toBe("Bob");
+        expect(result[0].data.name).toBe("Bob");
     });
 
     it("supports unary truthiness operator", async () => {
@@ -461,7 +486,7 @@ describe("pipeline: where", () => {
         db.addIndex(($) => $("name"));
         const result = await db.where(($) => [$("name"), "=", "Bob"]).get();
         expect(result).toHaveLength(1);
-        expect((result as any[])[0].id).toBe(bob.id);
+        expect(result[0].id).toBe(bob.id);
     });
 
     it("uses index acceleration for range", async () => {
@@ -483,7 +508,7 @@ describe("pipeline: sort", () => {
             .all()
             .sort(($) => $("age"), "asc")
             .get();
-        const ages = (result as any[]).map((r: any) => r.data.age);
+        const ages = result.map((r: any) => r.data.age);
         expect(ages).toEqual([25, 28, 30, 35]);
     });
 
@@ -493,7 +518,7 @@ describe("pipeline: sort", () => {
             .all()
             .sort(($) => $("age"), "desc")
             .get();
-        const ages = (result as any[]).map((r: any) => r.data.age);
+        const ages = result.map((r: any) => r.data.age);
         expect(ages).toEqual([35, 30, 28, 25]);
     });
 
@@ -503,20 +528,20 @@ describe("pipeline: sort", () => {
             .all()
             .sort(($) => $("name"), "asc")
             .get();
-        const names = (result as any[]).map((r: any) => r.data.name);
+        const names = result.map((r: any) => r.data.name);
         expect(names).toEqual(["Alice", "Bob", "Charlie", "Diana"]);
     });
 
     it("sorts by $.ID", async () => {
         const { db } = await seededDB();
-        const asc = await db
+        const asc = (await db
             .all()
             .sort(($) => $.ID, "asc")
-            .id() as string[];
-        const desc = await db
+            .id()) as string[];
+        const desc = (await db
             .all()
             .sort(($) => $.ID, "desc")
-            .id() as string[];
+            .id()) as string[];
         expect(desc).toEqual([...asc].reverse());
     });
 });
@@ -530,8 +555,8 @@ describe("pipeline: slice / paginate / window", () => {
             .slice(1, 3)
             .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.age).toBe(28);
-        expect((result as any[])[1].data.age).toBe(30);
+        expect(result[0].data.age).toBe(28);
+        expect(result[1].data.age).toBe(30);
     });
 
     it("paginates results", async () => {
@@ -548,8 +573,8 @@ describe("pipeline: slice / paginate / window", () => {
             .get();
         expect(page1).toHaveLength(2);
         expect(page2).toHaveLength(2);
-        expect((page1 as any[])[0].data.age).toBe(25);
-        expect((page2 as any[])[0].data.age).toBe(30);
+        expect(page1[0].data.age).toBe(25);
+        expect(page2[0].data.age).toBe(30);
     });
 
     it("windows results", async () => {
@@ -560,7 +585,7 @@ describe("pipeline: slice / paginate / window", () => {
             .window(1, 2)
             .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.age).toBe(28);
+        expect(result[0].data.age).toBe(28);
     });
 });
 
@@ -576,7 +601,7 @@ describe("pipeline: first / last / at", () => {
             .sort(($) => $("age"), "asc")
             .first()
             .get();
-        expect((result as any).data.age).toBe(25);
+        expect(result!.data.age).toBe(25);
     });
 
     it("last returns last item", async () => {
@@ -586,7 +611,7 @@ describe("pipeline: first / last / at", () => {
             .sort(($) => $("age"), "asc")
             .last()
             .get();
-        expect((result as any).data.age).toBe(35);
+        expect(result!.data.age).toBe(35);
     });
 
     it("at returns item at index", async () => {
@@ -596,7 +621,7 @@ describe("pipeline: first / last / at", () => {
             .sort(($) => $("age"), "asc")
             .at(2)
             .get();
-        expect((result as any).data.age).toBe(30);
+        expect(result!.data.age).toBe(30);
     });
 
     it("first on empty returns undefined", async () => {
@@ -711,51 +736,63 @@ describe("set operations", () => {
     describe("intersection", () => {
         it("returns items present in all pipelines", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), ">", 25]),
-                db.where(($) => [$("age"), "<", 35]),
-            ).get();
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), ">", 25]),
+                    db.where(($) => [$("age"), "<", 35]),
+                )
+                .get();
             // Alice(30) and Diana(28)
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Alice", "Diana"]);
         });
 
         it("returns empty when no overlap", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), "<", 25]),
-                db.where(($) => [$("age"), ">", 30]),
-            ).get();
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), "<", 25]),
+                    db.where(($) => [$("age"), ">", 30]),
+                )
+                .get();
             expect(result).toHaveLength(0);
         });
 
         it("supports chaining after intersection", async () => {
             const { db } = await seededDB();
-            const result = await db.intersection(
-                db.where(($) => [$("age"), ">", 25]),
-                db.where(($) => [$("age"), "<", 35]),
-            ).sort(($) => $("age"), "asc").first().get();
-            expect((result as any).data.name).toBe("Diana");
+            const result = await db
+                .intersection(
+                    db.where(($) => [$("age"), ">", 25]),
+                    db.where(($) => [$("age"), "<", 35]),
+                )
+                .sort(($) => $("age"), "asc")
+                .first()
+                .get();
+            expect(result!.data.name).toBe("Diana");
         });
     });
 
     describe("union", () => {
         it("returns items present in any pipeline", async () => {
             const { db } = await seededDB();
-            const result = await db.union(
-                db.where(($) => [$("age"), "<", 26]),
-                db.where(($) => [$("age"), ">", 34]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .union(
+                    db.where(($) => [$("age"), "<", 26]),
+                    db.where(($) => [$("age"), ">", 34]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Bob", "Charlie"]);
         });
 
         it("deduplicates overlapping results", async () => {
             const { db } = await seededDB();
-            const result = await db.union(
-                db.where(($) => [$("age"), ">", 20]),
-                db.where(($) => [$("age"), "<", 40]),
-            ).get();
+            const result = await db
+                .union(
+                    db.where(($) => [$("age"), ">", 20]),
+                    db.where(($) => [$("age"), "<", 40]),
+                )
+                .get();
             expect(result).toHaveLength(4);
         });
     });
@@ -763,22 +800,26 @@ describe("set operations", () => {
     describe("exclusion", () => {
         it("returns items in first pipeline not in second", async () => {
             const { db } = await seededDB();
-            const result = await db.exclusion(
-                db.all(),
-                db.where(($) => [$("age"), ">", 28]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .exclusion(
+                    db.all(),
+                    db.where(($) => [$("age"), ">", 28]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Bob", "Diana"]);
         });
 
         it("subtracts multiple pipelines", async () => {
             const { db } = await seededDB();
-            const result = await db.exclusion(
-                db.all(),
-                db.where(($) => [$("name"), "=", "Alice"]),
-                db.where(($) => [$("name"), "=", "Bob"]),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .exclusion(
+                    db.all(),
+                    db.where(($) => [$("name"), "=", "Alice"]),
+                    db.where(($) => [$("name"), "=", "Bob"]),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Charlie", "Diana"]);
         });
     });
@@ -789,14 +830,16 @@ describe("set operations", () => {
             // union of (age > 34) and (intersection of age > 25 and age < 29)
             // age > 34: Charlie(35)
             // age > 25 AND age < 29: Diana(28)
-            const result = await db.union(
-                db.where(($) => [$("age"), ">", 34]),
-                db.intersection(
-                    db.where(($) => [$("age"), ">", 25]),
-                    db.where(($) => [$("age"), "<", 29]),
-                ),
-            ).get();
-            const names = (result as any[]).map((r: any) => r.data.name).sort();
+            const result = await db
+                .union(
+                    db.where(($) => [$("age"), ">", 34]),
+                    db.intersection(
+                        db.where(($) => [$("age"), ">", 25]),
+                        db.where(($) => [$("age"), "<", 29]),
+                    ),
+                )
+                .get();
+            const names = result.map((r: any) => r.data.name).sort();
             expect(names).toEqual(["Charlie", "Diana"]);
         });
     });
@@ -814,7 +857,7 @@ describe("pipeline: lens-targeted update", () => {
         const a = await db.insert({ name: "Alice", address: { city: "NYC", zip: "10001" } });
         const b = await db.insert({ name: "Bob", address: { city: "LA", zip: "90001" } });
 
-        await (db as any).where(($: any) => [$("address")("city"), "=", "NYC"]).update(($: any) => $("address")("zip"), "10002");
+        await db.where(($: any) => [$("address")("city"), "=", "NYC"]).update(($: any) => $("address")("zip"), "10002");
 
         expect(db.get(a.id)?.data.address.zip).toBe("10002");
         expect(db.get(b.id)?.data.address.zip).toBe("90001"); // unchanged
@@ -822,7 +865,7 @@ describe("pipeline: lens-targeted update", () => {
 
     it("updates a top-level field via lens on seeded DB", async () => {
         const { db, alice, bob } = await seededDB();
-        await (db as any).where(($: any) => [$("name"), "=", "Alice"]).update(($: any) => $("age"), 99);
+        await db.where(($: any) => [$("name"), "=", "Alice"]).update(($: any) => $("age"), 99);
         expect(db.get(alice.id)?.data.age).toBe(99);
         expect(db.get(bob.id)?.data.age).toBe(25); // unchanged
     });

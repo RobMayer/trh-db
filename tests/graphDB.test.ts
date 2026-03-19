@@ -76,7 +76,10 @@ describe("insert", () => {
 
     it("inserts a batch of nodes", async () => {
         const db = makeDB();
-        const nodes = await db.insert([{ name: "A", weight: 10 }, { name: "B", weight: 20 }]);
+        const nodes = await db.insert([
+            { name: "A", weight: 10 },
+            { name: "B", weight: 20 },
+        ]);
         expect(nodes).toHaveLength(2);
         expect(nodes[0].id).not.toBe(nodes[1].id);
     });
@@ -165,7 +168,10 @@ describe("remove", () => {
 describe("connect", () => {
     it("creates a link and updates adjacency", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "A", weight: 1 }, { name: "B", weight: 2 }]);
+        const [a, b] = await db.insert([
+            { name: "A", weight: 1 },
+            { name: "B", weight: 2 },
+        ]);
         const link = await db.connect(a.id, b.id, { label: "x", cost: 10 });
         expect(link.from).toBe(a.id);
         expect(link.to).toBe(b.id);
@@ -226,7 +232,10 @@ describe("sever", () => {
 describe("disconnect", () => {
     it("removes all links between two nodes (bidirectional)", async () => {
         const db = makeDB();
-        const [a, b] = await db.insert([{ name: "A", weight: 1 }, { name: "B", weight: 2 }]);
+        const [a, b] = await db.insert([
+            { name: "A", weight: 1 },
+            { name: "B", weight: 2 },
+        ]);
         await db.connect(a.id, b.id, { label: "1", cost: 1 });
         await db.connect(b.id, a.id, { label: "2", cost: 2 });
         const removed = await db.disconnect(a.id, b.id);
@@ -323,7 +332,7 @@ describe("node pipeline: chain starters", () => {
     it("node(id) selects single node", async () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).get();
-        expect((result as any).data.name).toBe("A");
+        expect(result!.data.name).toBe("A");
     });
 
     it("node(ids) selects multiple nodes", async () => {
@@ -336,19 +345,34 @@ describe("node pipeline: chain starters", () => {
 describe("node pipeline: standard ops", () => {
     it("sorts ascending", async () => {
         const { db } = await seededDB();
-        const result = await db.nodes().sort(($) => $("weight"), "asc").get();
-        const weights = (result as any[]).map((r: any) => r.data.weight);
+        const result = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .get();
+        const weights = result.map((r: any) => r.data.weight);
         expect(weights).toEqual([10, 20, 30, 40, 50]);
     });
 
     it("first/last/at", async () => {
         const { db } = await seededDB();
-        const first = await db.nodes().sort(($) => $("weight"), "asc").first().get();
-        expect((first as any).data.weight).toBe(10);
-        const last = await db.nodes().sort(($) => $("weight"), "asc").last().get();
-        expect((last as any).data.weight).toBe(50);
-        const at2 = await db.nodes().sort(($) => $("weight"), "asc").at(2).get();
-        expect((at2 as any).data.weight).toBe(30);
+        const first = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .first()
+            .get();
+        expect(first!.data.weight).toBe(10);
+        const last = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .last()
+            .get();
+        expect(last!.data.weight).toBe(50);
+        const at2 = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .at(2)
+            .get();
+        expect(at2!.data.weight).toBe(30);
     });
 
     it("count/exists", async () => {
@@ -367,7 +391,7 @@ describe("node pipeline: standard ops", () => {
         const { db } = await seededDB();
         // A has degree 3 (ab, ac, ad out), B has degree 2 (ab in, bc out)
         const result = await db.nodesWhere(($) => [$.DEGREE, ">", 2]).get();
-        expect((result as any[]).some((r: any) => r.data.name === "A")).toBe(true);
+        expect(result.some((r: any) => r.data.name === "A")).toBe(true);
     });
 });
 
@@ -375,28 +399,31 @@ describe("node pipeline: via", () => {
     it("via() hops to adjacent nodes", async () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).via().get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["B", "C", "D"]); // a -> b, c, d
     });
 
     it("viaOut() follows outbound links only", async () => {
         const { db, b } = await seededDB();
         const result = await db.node(b.id).viaOut().get();
-        const names = (result as any[]).map((r: any) => r.data.name);
+        const names = result.map((r: any) => r.data.name);
         expect(names).toEqual(["C"]); // b -> c
     });
 
     it("viaIn() follows inbound links only", async () => {
         const { db, b } = await seededDB();
         const result = await db.node(b.id).viaIn().get();
-        const names = (result as any[]).map((r: any) => r.data.name);
+        const names = result.map((r: any) => r.data.name);
         expect(names).toEqual(["A"]); // a -> b
     });
 
     it("via with link predicate filters by link data", async () => {
         const { db, a } = await seededDB();
-        const result = await db.node(a.id).via(($) => [$("cost"), "<", 3]).get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const result = await db
+            .node(a.id)
+            .via(($) => [$("cost"), "<", 3])
+            .get();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["B"]); // ab cost=1, ac cost=5, ad cost=3
     });
 
@@ -404,7 +431,7 @@ describe("node pipeline: via", () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).viaOut().viaOut().get();
         // a -> b,c,d then from those -> c,e (b->c, d->e, c has no outbound)
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["C", "E"]);
     });
 });
@@ -413,23 +440,27 @@ describe("node pipeline: deep/wide traversals", () => {
     it("deepDownstreamNodes returns all downstream in DFS", async () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).deepDownstreamNodes().get();
-        expect((result as any[]).length).toBeGreaterThanOrEqual(4); // b, c, d, e
+        expect(result.length).toBeGreaterThanOrEqual(4); // b, c, d, e
     });
 
     it("wideDownstreamNodes returns all downstream in BFS", async () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).wideDownstreamNodes().get();
-        expect((result as any[]).length).toBeGreaterThanOrEqual(4);
+        expect(result.length).toBeGreaterThanOrEqual(4);
     });
 
     it("handles cycles without infinite loop", async () => {
         const db = makeDB();
-        const [x, y, z] = await db.insert([{ name: "X", weight: 1 }, { name: "Y", weight: 2 }, { name: "Z", weight: 3 }]);
+        const [x, y, z] = await db.insert([
+            { name: "X", weight: 1 },
+            { name: "Y", weight: 2 },
+            { name: "Z", weight: 3 },
+        ]);
         await db.connect(x.id, y.id, { label: "xy", cost: 1 });
         await db.connect(y.id, z.id, { label: "yz", cost: 1 });
         await db.connect(z.id, x.id, { label: "zx", cost: 1 }); // cycle!
         const result = await db.node(x.id).deepDownstreamNodes().get();
-        expect((result as any[]).length).toBe(2); // y, z (not infinite)
+        expect(result.length).toBe(2); // y, z (not infinite)
     });
 });
 
@@ -453,13 +484,17 @@ describe("link pipeline", () => {
     it("link(id) selects single link", async () => {
         const { db, ab } = await seededDB();
         const result = await db.link(ab.id).get();
-        expect((result as any).data.label).toBe("ab");
+        expect(result!.data.label).toBe("ab");
     });
 
     it("sorts and slices", async () => {
         const { db } = await seededDB();
-        const result = await db.links().sort(($) => $("cost"), "desc").first().get();
-        expect((result as any).data.label).toBe("ac"); // cost 5
+        const result = await db
+            .links()
+            .sort(($) => $("cost"), "desc")
+            .first()
+            .get();
+        expect(result!.data.label).toBe("ac"); // cost 5
     });
 
     it("where filters by $.FROM", async () => {
@@ -503,13 +538,13 @@ describe("mode switches: link → node", () => {
     it(".from() gets source nodes", async () => {
         const { db, ab, a } = await seededDB();
         const result = await db.link(ab.id).from().get();
-        expect((result as any[])[0].id).toBe(a.id);
+        expect(result[0].id).toBe(a.id);
     });
 
     it(".to() gets target nodes", async () => {
         const { db, ab, b } = await seededDB();
         const result = await db.link(ab.id).to().get();
-        expect((result as any[])[0].id).toBe(b.id);
+        expect(result[0].id).toBe(b.id);
     });
 
     it(".nodes() gets both endpoints", async () => {
@@ -523,7 +558,7 @@ describe("mode switches: deep/wide link traversals", () => {
     it("deepDownstreamLinks collects links in DFS", async () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).deepDownstreamLinks().get();
-        expect((result as any[]).length).toBeGreaterThanOrEqual(4);
+        expect(result.length).toBeGreaterThanOrEqual(4);
     });
 });
 
@@ -531,14 +566,19 @@ describe("chaining across modes", () => {
     it("node → out links → to nodes", async () => {
         const { db, a } = await seededDB();
         const result = await db.node(a.id).out().to().get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["B", "C", "D"]);
     });
 
     it("node → out links → where → to nodes", async () => {
         const { db, a } = await seededDB();
-        const result = await db.node(a.id).out().where(($) => [$("cost"), "<", 3]).to().get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const result = await db
+            .node(a.id)
+            .out()
+            .where(($) => [$("cost"), "<", 3])
+            .to()
+            .get();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["B"]); // only ab has cost < 3
     });
 });
@@ -552,14 +592,14 @@ describe("path pipeline", () => {
         const { db, a, c } = await seededDB();
         const paths = await db.node(a.id).pathTo(c.id).get();
         // Two paths: a->b->c and a->c
-        expect((paths as any[]).length).toBeGreaterThanOrEqual(2);
+        expect(paths.length).toBeGreaterThanOrEqual(2);
     });
 
     it("pathFrom finds upstream paths", async () => {
         const { db, c, a } = await seededDB();
         // c has no outbound to a, but a->c exists, so upstream from c should find a
         const paths = await db.node(c.id).pathFrom(a.id).get();
-        expect((paths as any[]).length).toBeGreaterThanOrEqual(1);
+        expect(paths.length).toBeGreaterThanOrEqual(1);
     });
 
     it("pathFrom returns empty when no upstream path exists", async () => {
@@ -573,22 +613,22 @@ describe("path pipeline", () => {
         // e has no outbound, but pathBetween follows any direction
         // e<-d<-a, so going upstream from e reaches a
         const paths = await db.node(e.id).pathBetween(a.id).get();
-        expect((paths as any[]).length).toBeGreaterThanOrEqual(1);
+        expect(paths.length).toBeGreaterThanOrEqual(1);
     });
 
     it("shortest returns all paths of minimum length", async () => {
         const { db, a, c } = await seededDB();
         const paths = await db.node(a.id).pathTo(c.id).shortest().get();
         // a->c direct is 1 step, a->b->c is 2 steps. Shortest keeps only 1-step paths.
-        expect((paths as any[]).length).toBe(1);
-        expect((paths as any[])[0].length).toBe(1);
+        expect(paths.length).toBe(1);
+        expect(paths[0].length).toBe(1);
     });
 
     it("longest returns all paths of maximum length", async () => {
         const { db, a, c } = await seededDB();
         const paths = await db.node(a.id).pathTo(c.id).longest().get();
-        expect((paths as any[]).length).toBe(1);
-        expect((paths as any[])[0].length).toBe(2);
+        expect(paths.length).toBe(1);
+        expect(paths[0].length).toBe(2);
     });
 
     it("first narrows to single path", async () => {
@@ -596,16 +636,16 @@ describe("path pipeline", () => {
         const path = await db.node(a.id).pathTo(c.id).first().get();
         // Single path — an array of steps, not an array of paths
         expect(Array.isArray(path)).toBe(true);
-        expect(Array.isArray((path as any)[0])).toBe(true); // first element is a step (tuple)
-        expect((path as any)[0].length).toBe(3); // [node, link, node]
+        expect(Array.isArray(path![0])).toBe(true); // first element is a step (tuple)
+        expect(path![0].length).toBe(3); // [node, link, node]
     });
 
     it("step narrows to single step per path", async () => {
         const { db, a, c } = await seededDB();
         const steps = await db.node(a.id).pathTo(c.id).step(0).get();
         // Multi paths, single step each → array of steps
-        expect((steps as any[]).length).toBeGreaterThanOrEqual(2);
-        for (const s of steps as any[]) {
+        expect(steps.length).toBeGreaterThanOrEqual(2);
+        for (const s of steps) {
             expect(s.length).toBe(3); // [node, link, node]
         }
     });
@@ -614,25 +654,25 @@ describe("path pipeline", () => {
         const { db, a, c } = await seededDB();
         const step = await db.node(a.id).pathTo(c.id).first().step(0).get();
         // Single path, single step → one step tuple
-        expect((step as any).length).toBe(3); // [node, link, node]
+        expect(step!.length).toBe(3); // [node, link, node]
     });
 
     it("origin gets start node", async () => {
         const { db, a, c } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).first().origin().get();
-        expect((result as any).data.name).toBe("A");
+        expect(result!.data.name).toBe("A");
     });
 
     it("destination gets end node", async () => {
         const { db, a, c } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).first().destination().get();
-        expect((result as any).data.name).toBe("C");
+        expect(result!.data.name).toBe("C");
     });
 
     it("nodes() extracts all unique nodes from paths", async () => {
         const { db, a, c } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).nodes().get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toContain("A");
         expect(names).toContain("C");
     });
@@ -640,7 +680,7 @@ describe("path pipeline", () => {
     it("links() extracts all unique links from paths", async () => {
         const { db, a, c } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).links().get();
-        expect((result as any[]).length).toBeGreaterThanOrEqual(2);
+        expect(result.length).toBeGreaterThanOrEqual(2);
     });
 
     it("count returns number of paths", async () => {
@@ -662,103 +702,155 @@ describe("path pipeline", () => {
     it("whereLinks filters paths by link data", async () => {
         const { db, a, c } = await seededDB();
         // Only paths where ALL links have cost < 3
-        const paths = await db.node(a.id).pathTo(c.id).whereLinks(($) => [$("cost"), "<", 3]).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .whereLinks(($) => [$("cost"), "<", 3])
+            .get();
         // a->b(cost 1)->c(cost 2) passes, a->c(cost 5) fails
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("segment slices steps within each path", async () => {
         const { db, a, c } = await seededDB();
         // Get the 2-step path a->b->c, take only the first step
         const paths = await db.node(a.id).pathTo(c.id).longest().segment(0, 1).get();
-        expect((paths as any[])[0].length).toBe(1); // 1 step remaining
+        expect(paths[0].length).toBe(1); // 1 step remaining
     });
 
     it("where with $.links() navigates into link data", async () => {
         const { db, a, c } = await seededDB();
         // Filter paths where the last link has cost < 3
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) => [$.links().at(-1)("cost"), "<", 3]).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [$.links().at(-1)("cost"), "<", 3])
+            .get();
         // a->b->c: last link is bc (cost 2) → passes
         // a->c: last link is ac (cost 5) → fails
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.links().where() filters links by meta fields", async () => {
         const { db, a, c, ac } = await seededDB();
         // Filter paths that contain link ac (by ID)
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.links().where((_: any) => [_.ID, "=", ac.id]).size(), ">", 0]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [
+                $.links()
+                    .where((_: any) => [_.ID, "=", ac.id])
+                    .size(),
+                ">",
+                0,
+            ])
+            .get();
         // Only the direct a->c path contains link ac
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.nodes() accesses node data within paths", async () => {
         const { db, a, c } = await seededDB();
         // Filter paths where any node has weight > 15
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.nodes().where((_: any) => [_("weight"), ">", 15]).size(), ">", 0]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [
+                $.nodes()
+                    .where((_: any) => [_("weight"), ">", 15])
+                    .size(),
+                ">",
+                0,
+            ])
+            .get();
         // Both paths go through nodes with weight > 15 (B=20, C=30)
-        expect((paths as any[]).length).toBe(2);
+        expect(paths.length).toBe(2);
     });
 
     it("where with $.NODES checks path passes through a node", async () => {
         const { db, a, c, b } = await seededDB();
         // Filter paths that pass through node B
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) => [$.NODES, "#", b.id]).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [$.NODES, "#", b.id])
+            .get();
         // Only a->b->c passes through B
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.LINKS checks path uses a specific link", async () => {
         const { db, a, c, ac } = await seededDB();
         // Filter paths that use link ac
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) => [$.LINKS, "#", ac.id]).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [$.LINKS, "#", ac.id])
+            .get();
         // Only the direct a->c path uses link ac
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.links().where() filters by data field with size threshold", async () => {
         const { db, a, e } = await seededDB();
         // Paths from a to e: a->d->e (links ad cost=3, de cost=4)
         // Filter paths where at least 1 link has cost > 3
-        const paths = await db.node(a.id).pathTo(e.id).where(($: any) =>
-            [$.links().where((_: any) => [_("cost"), ">", 3]).size(), ">=", 1]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(e.id)
+            .where(($: any) => [
+                $.links()
+                    .where((_: any) => [_("cost"), ">", 3])
+                    .size(),
+                ">=",
+                1,
+            ])
+            .get();
         // a->d->e has de(cost=4) which passes
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.nodes().where() filters by per-element meta _.ID", async () => {
         const { db, a, c, b } = await seededDB();
         // Filter paths where node B is among the nodes
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.nodes().where((_: any) => [_.ID, "=", b.id]).size(), ">", 0]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [
+                $.nodes()
+                    .where((_: any) => [_.ID, "=", b.id])
+                    .size(),
+                ">",
+                0,
+            ])
+            .get();
         // Only a->b->c passes through B
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.nodes().at(0) accesses first node data", async () => {
         const { db, a, c } = await seededDB();
         // Filter paths where the first node has weight = 10 (which is A)
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.nodes().at(0)("weight"), "=", 10]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [$.nodes().at(0)("weight"), "=", 10])
+            .get();
         // Both paths start at A (weight 10)
-        expect((paths as any[]).length).toBe(2);
+        expect(paths.length).toBe(2);
     });
 
     it("where with $.links().at(0) accesses first link data", async () => {
         const { db, a, c, ab } = await seededDB();
         // Filter paths where the first link has cost = 1 (ab)
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.links().at(0)("cost"), "=", 1]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [$.links().at(0)("cost"), "=", 1])
+            .get();
         // a->b->c starts with ab (cost 1) → passes
         // a->c starts with ac (cost 5) → fails
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 
     it("where with $.nodes().where() filters by per-element meta _.DEGREE", async () => {
@@ -766,28 +858,48 @@ describe("path pipeline", () => {
         // Filter paths where any node has degree > 3
         // A has degree 3 (ab, ac, ad out), so DEGREE = 3, not > 3
         // No node has degree > 3 in our test graph... B has degree 2, C has degree 2
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.nodes().where((_: any) => [_.DEGREE, ">", 3]).size(), ">", 0]
-        ).get();
-        expect((paths as any[]).length).toBe(0);
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [
+                $.nodes()
+                    .where((_: any) => [_.DEGREE, ">", 3])
+                    .size(),
+                ">",
+                0,
+            ])
+            .get();
+        expect(paths.length).toBe(0);
     });
 
     it("where with $.nodes().where() filters by per-element meta _.DEGREE (positive)", async () => {
         const { db, a, c } = await seededDB();
         // Filter paths where any node has degree >= 3
         // A has degree 3 (ab out, ac out, ad out = 3 out, 0 in = 3 total)
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) =>
-            [$.nodes().where((_: any) => [_.DEGREE, ">=", 3]).size(), ">", 0]
-        ).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [
+                $.nodes()
+                    .where((_: any) => [_.DEGREE, ">=", 3])
+                    .size(),
+                ">",
+                0,
+            ])
+            .get();
         // Both paths include A which has degree 3
-        expect((paths as any[]).length).toBe(2);
+        expect(paths.length).toBe(2);
     });
 
     it("where with $.LENGTH filters by path length", async () => {
         const { db, a, c } = await seededDB();
-        const paths = await db.node(a.id).pathTo(c.id).where(($: any) => [$.LENGTH, "=", 1]).get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .where(($: any) => [$.LENGTH, "=", 1])
+            .get();
         // Only the direct a->c path has length 1
-        expect((paths as any[]).length).toBe(1);
+        expect(paths.length).toBe(1);
     });
 });
 
@@ -798,44 +910,52 @@ describe("path pipeline", () => {
 describe("set operations", () => {
     it("intersection of node pipelines", async () => {
         const { db } = await seededDB();
-        const result = await db.intersection(
-            db.nodesWhere(($) => [$("weight"), ">", 15]),
-            db.nodesWhere(($) => [$("weight"), "<", 45]),
-        ).get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const result = await db
+            .intersection(
+                db.nodesWhere(($) => [$("weight"), ">", 15]),
+                db.nodesWhere(($) => [$("weight"), "<", 45]),
+            )
+            .get();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["B", "C", "D"]);
     });
 
     it("union of node pipelines", async () => {
         const { db } = await seededDB();
-        const result = await db.union(
-            db.nodesWhere(($) => [$("weight"), "<", 15]),
-            db.nodesWhere(($) => [$("weight"), ">", 45]),
-        ).get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const result = await db
+            .union(
+                db.nodesWhere(($) => [$("weight"), "<", 15]),
+                db.nodesWhere(($) => [$("weight"), ">", 45]),
+            )
+            .get();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["A", "E"]);
     });
 
     it("exclusion of node pipelines", async () => {
         const { db } = await seededDB();
-        const result = await db.exclusion(
-            db.nodes(),
-            db.nodesWhere(($) => [$("weight"), ">", 30]),
-        ).get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const result = await db
+            .exclusion(
+                db.nodes(),
+                db.nodesWhere(($) => [$("weight"), ">", 30]),
+            )
+            .get();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["A", "B", "C"]);
     });
 
     it("nested set operations", async () => {
         const { db } = await seededDB();
-        const result = await db.union(
-            db.nodesWhere(($) => [$("weight"), "<", 15]),
-            db.intersection(
-                db.nodesWhere(($) => [$("weight"), ">", 25]),
-                db.nodesWhere(($) => [$("weight"), "<", 45]),
-            ),
-        ).get();
-        const names = (result as any[]).map((r: any) => r.data.name).sort();
+        const result = await db
+            .union(
+                db.nodesWhere(($) => [$("weight"), "<", 15]),
+                db.intersection(
+                    db.nodesWhere(($) => [$("weight"), ">", 25]),
+                    db.nodesWhere(($) => [$("weight"), "<", 45]),
+                ),
+            )
+            .get();
+        const names = result.map((r: any) => r.data.name).sort();
         expect(names).toEqual(["A", "C", "D"]);
     });
 });
@@ -847,24 +967,24 @@ describe("set operations", () => {
 describe("join", () => {
     it("creates links between pipeline results", async () => {
         const db = makeDB();
-        const [a, b, c] = await db.insert([{ name: "A", weight: 1 }, { name: "B", weight: 2 }, { name: "C", weight: 3 }]);
-        const created = await db.join(
-            db.node(a.id),
-            db.node([b.id, c.id]),
-            { label: "joined", cost: 0 },
-        );
+        const [a, b, c] = await db.insert([
+            { name: "A", weight: 1 },
+            { name: "B", weight: 2 },
+            { name: "C", weight: 3 },
+        ]);
+        const created = await db.join(db.node(a.id), db.node([b.id, c.id]), { label: "joined", cost: 0 });
         expect(created).toHaveLength(2);
         expect(db.get(a.id)?.out.length).toBe(2);
     });
 
     it("join with callback can skip pairs", async () => {
         const db = makeDB();
-        const [a, b, c] = await db.insert([{ name: "A", weight: 1 }, { name: "B", weight: 2 }, { name: "C", weight: 3 }]);
-        const created = await db.join(
-            db.node(a.id),
-            db.node([b.id, c.id]),
-            (from, to) => to.data.weight > 2 ? { label: "heavy", cost: 99 } : undefined,
-        );
+        const [a, b, c] = await db.insert([
+            { name: "A", weight: 1 },
+            { name: "B", weight: 2 },
+            { name: "C", weight: 3 },
+        ]);
+        const created = await db.join(db.node(a.id), db.node([b.id, c.id]), (from, to) => (to.data.weight > 2 ? { label: "heavy", cost: 99 } : undefined));
         expect(created).toHaveLength(1); // only a->c
         expect(created[0].data.label).toBe("heavy");
     });
@@ -920,7 +1040,7 @@ describe("deep/wide upstream traversals", () => {
     it("deepUpstreamNodes from e finds d, a", async () => {
         const { db, e, d, a } = await seededDB();
         const result = await db.node(e.id).deepUpstreamNodes().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toContain(d.id);
         expect(ids).toContain(a.id);
         expect(ids).toHaveLength(2);
@@ -929,7 +1049,7 @@ describe("deep/wide upstream traversals", () => {
     it("wideUpstreamNodes from e finds d, a", async () => {
         const { db, e, d, a } = await seededDB();
         const result = await db.node(e.id).wideUpstreamNodes().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toContain(d.id);
         expect(ids).toContain(a.id);
         expect(ids).toHaveLength(2);
@@ -938,7 +1058,7 @@ describe("deep/wide upstream traversals", () => {
     it("deepUpstreamLinks from c finds links bc, ab, ac", async () => {
         const { db, c, bc, ab, ac } = await seededDB();
         const result = await db.node(c.id).deepUpstreamLinks().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toContain(bc.id);
         expect(ids).toContain(ab.id);
         expect(ids).toContain(ac.id);
@@ -947,7 +1067,7 @@ describe("deep/wide upstream traversals", () => {
     it("wideUpstreamLinks from c finds links bc, ac, ab", async () => {
         const { db, c, bc, ac, ab } = await seededDB();
         const result = await db.node(c.id).wideUpstreamLinks().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toContain(bc.id);
         expect(ids).toContain(ac.id);
         expect(ids).toContain(ab.id);
@@ -962,7 +1082,7 @@ describe("any-direction traversals", () => {
     it("deepNodes from b finds all reachable nodes", async () => {
         const { db, b, a, c, d, e } = await seededDB();
         const result = await db.node(b.id).deepNodes().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         // b connects to a (in), c (out); a connects to c, d; d connects to e
         expect(ids).toContain(a.id);
         expect(ids).toContain(c.id);
@@ -974,7 +1094,7 @@ describe("any-direction traversals", () => {
     it("wideNodes from b finds all reachable nodes BFS", async () => {
         const { db, b, a, c, d, e } = await seededDB();
         const result = await db.node(b.id).wideNodes().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toContain(a.id);
         expect(ids).toContain(c.id);
         expect(ids).toContain(d.id);
@@ -990,28 +1110,44 @@ describe("any-direction traversals", () => {
 describe("node pipeline: paginate, window, slice, distinct, id", () => {
     it("paginate returns correct page of nodes", async () => {
         const { db } = await seededDB();
-        const page1 = await db.nodes().sort(($) => $("weight"), "asc").paginate(1, 2).get();
-        const page2 = await db.nodes().sort(($) => $("weight"), "asc").paginate(2, 2).get();
+        const page1 = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .paginate(1, 2)
+            .get();
+        const page2 = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .paginate(2, 2)
+            .get();
         expect(page1).toHaveLength(2);
         expect(page2).toHaveLength(2);
-        expect((page1 as any[])[0].data.weight).toBe(10);
-        expect((page2 as any[])[0].data.weight).toBe(30);
+        expect(page1[0].data.weight).toBe(10);
+        expect(page2[0].data.weight).toBe(30);
     });
 
     it("window returns correct window of nodes", async () => {
         const { db } = await seededDB();
-        const result = await db.nodes().sort(($) => $("weight"), "asc").window(1, 2).get();
+        const result = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .window(1, 2)
+            .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.weight).toBe(20);
-        expect((result as any[])[1].data.weight).toBe(30);
+        expect(result[0].data.weight).toBe(20);
+        expect(result[1].data.weight).toBe(30);
     });
 
     it("slice returns correct slice of nodes", async () => {
         const { db } = await seededDB();
-        const result = await db.nodes().sort(($) => $("weight"), "asc").slice(2, 4).get();
+        const result = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .slice(2, 4)
+            .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.weight).toBe(30);
-        expect((result as any[])[1].data.weight).toBe(40);
+        expect(result[0].data.weight).toBe(30);
+        expect(result[1].data.weight).toBe(40);
     });
 
     it("distinct deduplicates nodes", async () => {
@@ -1025,7 +1161,10 @@ describe("node pipeline: paginate, window, slice, distinct, id", () => {
         const singleId = await db.node(a.id).id();
         expect(singleId).toBe(a.id);
 
-        const multiIds = await db.nodes().sort(($) => $("weight"), "asc").id();
+        const multiIds = await db
+            .nodes()
+            .sort(($) => $("weight"), "asc")
+            .id();
         expect(multiIds).toHaveLength(5);
     });
 });
@@ -1037,28 +1176,44 @@ describe("node pipeline: paginate, window, slice, distinct, id", () => {
 describe("link pipeline: paginate, window, slice, distinct, id", () => {
     it("paginate returns correct page of links", async () => {
         const { db } = await seededDB();
-        const page1 = await db.links().sort(($) => $("cost"), "asc").paginate(1, 2).get();
-        const page2 = await db.links().sort(($) => $("cost"), "asc").paginate(2, 2).get();
+        const page1 = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .paginate(1, 2)
+            .get();
+        const page2 = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .paginate(2, 2)
+            .get();
         expect(page1).toHaveLength(2);
         expect(page2).toHaveLength(2);
-        expect((page1 as any[])[0].data.cost).toBe(1);
-        expect((page2 as any[])[0].data.cost).toBe(3);
+        expect(page1[0].data.cost).toBe(1);
+        expect(page2[0].data.cost).toBe(3);
     });
 
     it("window returns correct window of links", async () => {
         const { db } = await seededDB();
-        const result = await db.links().sort(($) => $("cost"), "asc").window(1, 2).get();
+        const result = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .window(1, 2)
+            .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.cost).toBe(2);
-        expect((result as any[])[1].data.cost).toBe(3);
+        expect(result[0].data.cost).toBe(2);
+        expect(result[1].data.cost).toBe(3);
     });
 
     it("slice returns correct slice of links", async () => {
         const { db } = await seededDB();
-        const result = await db.links().sort(($) => $("cost"), "asc").slice(1, 3).get();
+        const result = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .slice(1, 3)
+            .get();
         expect(result).toHaveLength(2);
-        expect((result as any[])[0].data.cost).toBe(2);
-        expect((result as any[])[1].data.cost).toBe(3);
+        expect(result[0].data.cost).toBe(2);
+        expect(result[1].data.cost).toBe(3);
     });
 
     it("distinct deduplicates links", async () => {
@@ -1072,7 +1227,10 @@ describe("link pipeline: paginate, window, slice, distinct, id", () => {
         const singleId = await db.link(ab.id).id();
         expect(singleId).toBe(ab.id);
 
-        const multiIds = await db.links().sort(($) => $("cost"), "asc").id();
+        const multiIds = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .id();
         expect(multiIds).toHaveLength(5);
     });
 });
@@ -1131,16 +1289,16 @@ describe("path: step combined with other ops", () => {
         // longest() keeps 1 path (a->b->c, 2 steps), step(0) extracts first step from each
         // multi/single → GraphStep[] with 1 element
         expect(Array.isArray(step)).toBe(true);
-        expect((step as any[]).length).toBe(1);
-        expect((step as any[])[0].length).toBe(3);
+        expect(step.length).toBe(1);
+        expect(step[0].length).toBe(3);
     });
 
     it("last step of each path via step(-1)", async () => {
         const { db, a, c } = await seededDB();
         const steps = await db.node(a.id).pathTo(c.id).step(-1).get();
         // two paths: a->b->c (last step: b->bc->c) and a->c (last step: a->ac->c)
-        expect((steps as any[]).length).toBe(2);
-        for (const s of steps as any[]) {
+        expect(steps.length).toBe(2);
+        for (const s of steps) {
             expect(s.length).toBe(3); // [node, link, node]
         }
     });
@@ -1156,7 +1314,7 @@ describe("path: segment", () => {
         const paths = await db.node(a.id).pathTo(e.id).first().segment(0, 1).get();
         // path a->d->e has 2 steps, segment(0,1) gives first step only
         expect(Array.isArray(paths)).toBe(true);
-        expect((paths as any).length).toBe(1);
+        expect(paths!.length).toBe(1);
     });
 });
 
@@ -1177,8 +1335,8 @@ describe("path: pathFrom and pathBetween thorough", () => {
         const { db, e, a } = await seededDB();
         const paths = await db.node(e.id).pathBetween(a.id).shortest().get();
         // e<-d<-a is 2 steps (bidirectional), only one shortest path
-        expect((paths as any[]).length).toBe(1);
-        expect((paths as any[])[0].length).toBe(2); // 2 steps
+        expect(paths.length).toBe(1);
+        expect(paths[0].length).toBe(2); // 2 steps
     });
 });
 
@@ -1195,17 +1353,13 @@ describe("join: complex callback scenarios", () => {
             { name: "C", weight: 3 },
             { name: "D", weight: 4 },
         ]);
-        const created = await db.join(
-            db.node([a.id, b.id]),
-            db.node([c.id, d.id]),
-            (from: any, to: any) => {
-                // Only connect if from weight + to weight > 4
-                if (from.data.weight + to.data.weight > 4) {
-                    return { label: `${from.data.name}->${to.data.name}`, cost: from.data.weight + to.data.weight };
-                }
-                return undefined;
-            },
-        );
+        const created = await db.join(db.node([a.id, b.id]), db.node([c.id, d.id]), (from: any, to: any) => {
+            // Only connect if from weight + to weight > 4
+            if (from.data.weight + to.data.weight > 4) {
+                return { label: `${from.data.name}->${to.data.name}`, cost: from.data.weight + to.data.weight };
+            }
+            return undefined;
+        });
         // a(1)+c(3)=4 no, a(1)+d(4)=5 yes, b(2)+c(3)=5 yes, b(2)+d(4)=6 yes
         expect(created).toHaveLength(3);
     });
@@ -1218,14 +1372,22 @@ describe("join: complex callback scenarios", () => {
 describe("link pipeline: last / at", () => {
     it("last returns last link by sort order", async () => {
         const { db } = await seededDB();
-        const result = await db.links().sort(($) => $("cost"), "asc").last().get();
-        expect((result as any).data.cost).toBe(5); // ac has highest cost
+        const result = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .last()
+            .get();
+        expect(result!.data.cost).toBe(5); // ac has highest cost
     });
 
     it("at returns link at specific index", async () => {
         const { db } = await seededDB();
-        const result = await db.links().sort(($) => $("cost"), "asc").at(2).get();
-        expect((result as any).data.cost).toBe(3); // ab(1), bc(2), ad(3), de(4), ac(5)
+        const result = await db
+            .links()
+            .sort(($) => $("cost"), "asc")
+            .at(2)
+            .get();
+        expect(result!.data.cost).toBe(3); // ab(1), bc(2), ad(3), de(4), ac(5)
     });
 });
 
@@ -1237,7 +1399,7 @@ describe("mode switches: remaining link traversals", () => {
     it("wideDownstreamLinks collects links in BFS from a node", async () => {
         const { db, a, ab, ac, ad } = await seededDB();
         const result = await db.node(a.id).wideDownstreamLinks().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         expect(ids).toContain(ab.id);
         expect(ids).toContain(ac.id);
         expect(ids).toContain(ad.id);
@@ -1247,13 +1409,13 @@ describe("mode switches: remaining link traversals", () => {
         const { db, b } = await seededDB();
         const result = await db.node(b.id).deepLinks().get();
         // b connects to a (in via ab), c (out via bc); from there all other links are reachable
-        expect((result as any[]).length).toBe(5); // all 5 links
+        expect(result.length).toBe(5); // all 5 links
     });
 
     it("wideLinks collects all reachable links in any direction (BFS)", async () => {
         const { db, b } = await seededDB();
         const result = await db.node(b.id).wideLinks().get();
-        expect((result as any[]).length).toBe(5); // all 5 links
+        expect(result.length).toBe(5); // all 5 links
     });
 });
 
@@ -1265,7 +1427,7 @@ describe("path: nodeAt, linkAt, ends", () => {
     it("nodeAt(1) returns the second node in each path", async () => {
         const { db, a, c, b } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).nodeAt(1).get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         // path a->b->c: nodeAt(1) = b
         // path a->c: nodeAt(1) = c
         expect(ids).toContain(b.id);
@@ -1275,7 +1437,7 @@ describe("path: nodeAt, linkAt, ends", () => {
     it("linkAt(0) returns the first link in each path", async () => {
         const { db, a, c, ab, ac } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).linkAt(0).get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         // path a->b->c: linkAt(0) = ab
         // path a->c: linkAt(0) = ac
         expect(ids).toContain(ab.id);
@@ -1285,7 +1447,7 @@ describe("path: nodeAt, linkAt, ends", () => {
     it("ends() returns start and end nodes of all paths", async () => {
         const { db, a, c } = await seededDB();
         const result = await db.node(a.id).pathTo(c.id).ends().get();
-        const ids = (result as any[]).map((r: any) => r.id);
+        const ids = result.map((r: any) => r.id);
         // both paths start at a and end at c
         expect(ids).toContain(a.id);
         expect(ids).toContain(c.id);
@@ -1303,21 +1465,21 @@ describe("path: last / at on path collection", () => {
         const path = await db.node(a.id).pathTo(c.id).last().get();
         // single path returned
         expect(Array.isArray(path)).toBe(true);
-        expect((path as any)[0].length).toBe(3); // first element is a step [node, link, node]
+        expect(path![0].length).toBe(3); // first element is a step [node, link, node]
     });
 
     it("at(0) returns the first path", async () => {
         const { db, a, c } = await seededDB();
         const path = await db.node(a.id).pathTo(c.id).at(0).get();
         expect(Array.isArray(path)).toBe(true);
-        expect((path as any)[0].length).toBe(3);
+        expect(path![0].length).toBe(3);
     });
 
     it("at(1) returns the second path", async () => {
         const { db, a, c } = await seededDB();
         const path = await db.node(a.id).pathTo(c.id).at(1).get();
         expect(Array.isArray(path)).toBe(true);
-        expect((path as any)[0].length).toBe(3);
+        expect(path![0].length).toBe(3);
     });
 });
 
@@ -1328,33 +1490,57 @@ describe("path: last / at on path collection", () => {
 describe("path: sort, slice, paginate, window", () => {
     it("sort by $.LENGTH orders paths by step count", async () => {
         const { db, a, c } = await seededDB();
-        const paths = await db.node(a.id).pathTo(c.id).sort(($: any) => $.LENGTH, "asc").get();
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .sort(($: any) => $.LENGTH, "asc")
+            .get();
         // a->c (1 step) should come before a->b->c (2 steps)
-        expect((paths as any[])[0].length).toBe(1);
-        expect((paths as any[])[1].length).toBe(2);
+        expect(paths[0].length).toBe(1);
+        expect(paths[1].length).toBe(2);
     });
 
     it("slice returns subset of paths", async () => {
         const { db, a, c } = await seededDB();
-        const paths = await db.node(a.id).pathTo(c.id).sort(($: any) => $.LENGTH, "asc").slice(0, 1).get();
-        expect((paths as any[]).length).toBe(1);
-        expect((paths as any[])[0].length).toBe(1); // shortest path only
+        const paths = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .sort(($: any) => $.LENGTH, "asc")
+            .slice(0, 1)
+            .get();
+        expect(paths.length).toBe(1);
+        expect(paths[0].length).toBe(1); // shortest path only
     });
 
     it("paginate returns correct page of paths", async () => {
         const { db, a, c } = await seededDB();
-        const page1 = await db.node(a.id).pathTo(c.id).sort(($: any) => $.LENGTH, "asc").paginate(1, 1).get();
-        const page2 = await db.node(a.id).pathTo(c.id).sort(($: any) => $.LENGTH, "asc").paginate(2, 1).get();
-        expect((page1 as any[]).length).toBe(1);
-        expect((page2 as any[]).length).toBe(1);
-        expect((page1 as any[])[0].length).toBe(1); // 1-step path
-        expect((page2 as any[])[0].length).toBe(2); // 2-step path
+        const page1 = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .sort(($: any) => $.LENGTH, "asc")
+            .paginate(1, 1)
+            .get();
+        const page2 = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .sort(($: any) => $.LENGTH, "asc")
+            .paginate(2, 1)
+            .get();
+        expect(page1.length).toBe(1);
+        expect(page2.length).toBe(1);
+        expect(page1[0].length).toBe(1); // 1-step path
+        expect(page2[0].length).toBe(2); // 2-step path
     });
 
     it("window returns correct window of paths", async () => {
         const { db, a, c } = await seededDB();
-        const result = await db.node(a.id).pathTo(c.id).sort(($: any) => $.LENGTH, "asc").window(1, 1).get();
-        expect((result as any[]).length).toBe(1);
-        expect((result as any[])[0].length).toBe(2); // second path (2-step)
+        const result = await db
+            .node(a.id)
+            .pathTo(c.id)
+            .sort(($: any) => $.LENGTH, "asc")
+            .window(1, 1)
+            .get();
+        expect(result.length).toBe(1);
+        expect(result[0].length).toBe(2); // second path (2-step)
     });
 });
