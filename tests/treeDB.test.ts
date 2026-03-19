@@ -475,14 +475,14 @@ describe("pipeline: wide (all nodes BFS)", () => {
 describe("pipeline: ancestors", () => {
     it("returns ancestors of a node", async () => {
         const { db, alice, dad, grandpa } = await seededDB();
-        const result = await db.ancestors(alice.id).get();
+        const result = await db.ancestorsOf(alice.id).get();
         const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, grandpa.id]);
     });
 
     it("returns empty for root", async () => {
         const { db, grandpa } = await seededDB();
-        const result = await db.ancestors(grandpa.id).get();
+        const result = await db.ancestorsOf(grandpa.id).get();
         expect(result).toHaveLength(0);
     });
 });
@@ -490,7 +490,7 @@ describe("pipeline: ancestors", () => {
 describe("pipeline: children", () => {
     it("returns children of a node", async () => {
         const { db, dad, alice, bob } = await seededDB();
-        const result = await db.children(dad.id).get();
+        const result = await db.childrenOf(dad.id).get();
         const ids = result.map((r: any) => r.id);
         expect(ids).toEqual(expect.arrayContaining([alice.id, bob.id]));
         expect(result).toHaveLength(2);
@@ -498,7 +498,7 @@ describe("pipeline: children", () => {
 
     it("returns empty for leaf", async () => {
         const { db, alice } = await seededDB();
-        const result = await db.children(alice.id).get();
+        const result = await db.childrenOf(alice.id).get();
         expect(result).toHaveLength(0);
     });
 });
@@ -506,13 +506,13 @@ describe("pipeline: children", () => {
 describe("pipeline: parent", () => {
     it("returns parent of a single node", async () => {
         const { db, alice, dad } = await seededDB();
-        const result = await db.parent(alice.id).get();
+        const result = await db.parentOf(alice.id).get();
         expect((result as TreeItemOf<Person>).id).toBe(dad.id);
     });
 
     it("returns empty for root node", async () => {
         const { db, grandpa } = await seededDB();
-        const result = await db.parent(grandpa.id).get();
+        const result = await db.parentOf(grandpa.id).get();
         expect(result).toBeUndefined();
     });
 });
@@ -520,14 +520,14 @@ describe("pipeline: parent", () => {
 describe("pipeline: deepDescendants", () => {
     it("returns descendants in DFS order", async () => {
         const { db, grandpa, dad, alice, bob, uncle, charlie } = await seededDB();
-        const result = await db.deepDescendants(grandpa.id).get();
+        const result = await db.deepDescendantsOf(grandpa.id).get();
         const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, alice.id, bob.id, uncle.id, charlie.id]);
     });
 
     it("returns empty for leaf", async () => {
         const { db, alice } = await seededDB();
-        const result = await db.deepDescendants(alice.id).get();
+        const result = await db.deepDescendantsOf(alice.id).get();
         expect(result).toHaveLength(0);
     });
 });
@@ -535,7 +535,7 @@ describe("pipeline: deepDescendants", () => {
 describe("pipeline: wideDescendants", () => {
     it("returns descendants in BFS order", async () => {
         const { db, grandpa, dad, uncle, alice, bob, charlie } = await seededDB();
-        const result = await db.wideDescendants(grandpa.id).get();
+        const result = await db.wideDescendantsOf(grandpa.id).get();
         const ids = result.map((r: any) => r.id);
         expect(ids).toEqual([dad.id, uncle.id, alice.id, bob.id, charlie.id]);
     });
@@ -544,7 +544,7 @@ describe("pipeline: wideDescendants", () => {
 describe("pipeline: siblings", () => {
     it("returns siblings excluding self", async () => {
         const { db, alice, bob } = await seededDB();
-        const result = await db.siblings(alice.id).get();
+        const result = await db.siblingsOf(alice.id).get();
         expect(result).toHaveLength(1);
         expect(result[0].id).toBe(bob.id);
     });
@@ -552,14 +552,14 @@ describe("pipeline: siblings", () => {
     it("returns siblings of a root (other roots)", async () => {
         const { db, grandpa } = await seededDB();
         const other = await db.add({ name: "Other", age: 40 }, null);
-        const result = await db.siblings(grandpa.id).get();
+        const result = await db.siblingsOf(grandpa.id).get();
         expect(result).toHaveLength(1);
         expect(result[0].id).toBe(other.id);
     });
 
     it("returns empty for only child", async () => {
         const { db, charlie } = await seededDB();
-        const result = await db.siblings(charlie.id).get();
+        const result = await db.siblingsOf(charlie.id).get();
         expect(result).toHaveLength(0);
     });
 });
@@ -782,7 +782,7 @@ describe("pipeline: update terminal", () => {
 describe("pipeline: pluck terminal", () => {
     it("plucks matched nodes", async () => {
         const { db, alice, bob, dad } = await seededDB();
-        await db.children(dad.id).pluck();
+        await db.childrenOf(dad.id).pluck();
         expect(db.get(alice.id)).toBeUndefined();
         expect(db.get(bob.id)).toBeUndefined();
         expect(db.get(dad.id)?.children).toEqual([]);
@@ -802,7 +802,7 @@ describe("pipeline: prune terminal", () => {
 describe("pipeline: move terminal", () => {
     it("moves matched nodes to new parent", async () => {
         const { db, alice, bob, dad, uncle } = await seededDB();
-        await db.children(dad.id).move(uncle.id);
+        await db.childrenOf(dad.id).move(uncle.id);
         expect(db.get(alice.id)?.parent).toBe(uncle.id);
         expect(db.get(bob.id)?.parent).toBe(uncle.id);
         expect(db.get(uncle.id)?.children).toContain(alice.id);
@@ -871,7 +871,7 @@ describe("pipeline: traversal chaining", () => {
     it("chains traversal then sort", async () => {
         const { db, grandpa } = await seededDB();
         const result = await db
-            .children(grandpa.id)
+            .childrenOf(grandpa.id)
             .sort(($) => $("age"), "asc")
             .get();
         const names = result.map((r: any) => r.data.name);

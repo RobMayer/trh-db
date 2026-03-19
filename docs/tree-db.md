@@ -143,12 +143,12 @@ db.select([id1, id2]); // multiple nodes
 db.where(($) => [$("status"), "=", "todo"]);
 
 // Structural starters
-db.ancestors(id); // ancestors from node to root
-db.children(id); // direct children
-db.parent(id); // parent node
-db.deepDescendants(id); // all descendants (DFS)
-db.wideDescendants(id); // all descendants (BFS)
-db.siblings(id); // siblings (same parent, excluding self)
+db.ancestorsOf(id); // ancestors from node to root
+db.childrenOf(id); // direct children
+db.parentOf(id); // parent node
+db.deepDescendantsOf(id); // all descendants (DFS)
+db.wideDescendantsOf(id); // all descendants (BFS)
+db.siblingsOf(id); // siblings (same parent, excluding self)
 ```
 
 ### Chaining Operations
@@ -246,7 +246,7 @@ await db.splice(middleNodeId);
 ### Get a node's full path from root
 
 ```ts
-const path = await db.ancestors(nodeId).get();
+const path = await db.ancestorsOf(nodeId).get();
 // Returns ancestors from immediate parent to root
 ```
 

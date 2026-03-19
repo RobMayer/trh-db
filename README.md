@@ -20,25 +20,26 @@ A keyed collection of documents.
 import { DocumentDB } from "trh-db";
 import { MemoryCodec } from "trh-db/codec";
 
-type User = { name: string; age: number; role: string };
+type User = { name: string; age: number; role: string; active: boolean };
 const db = new DocumentDB<User>(new MemoryCodec());
 
 // Insert — IDs are auto-generated
-const alice = await db.insert({ name: "Alice", age: 30, role: "admin" });
+const alice = await db.insert({ name: "Alice", age: 30, role: "admin", active: true });
 const [bob, charlie] = await db.insert([
-    { name: "Bob", age: 25, role: "editor" },
-    { name: "Charlie", age: 35, role: "admin" },
+    { name: "Bob", age: 25, role: "editor", active: true },
+    { name: "Charlie", age: 35, role: "admin", active: false },
 ]);
 
-// Query
-const admins = await db.where($ => [$("role"), "=", "admin"]).get();
-const youngest = await db.all().sort($ => $("age"), "asc").first().get();
+// Chain starters are just the entry point — the pipeline is where queries live
+const page = await db
+    .where(($) => [$("role"), "=", "admin"])
+    .where(($) => [$("active"), "?"])
+    .sort(($) => $("age"), "asc")
+    .paginate(1, 10)
+    .get();
 
-// Update
-await db.update(alice.id, prev => ({ ...prev, age: prev.age + 1 }));
-
-// Pipeline update
-await db.where($ => [$("role"), "=", "editor"]).update(prev => ({ ...prev, role: "viewer" }));
+// Write terminals work on any pipeline result
+await db.where(($) => [$("active"), "?"]).update((prev) => ({ ...prev, age: prev.age + 1 }));
 ```
 
 ### TreeDB
@@ -49,27 +50,34 @@ A parent/child hierarchy.
 import { TreeDB } from "trh-db";
 import { MemoryCodec } from "trh-db/codec";
 
-type Department = { name: string; budget: number };
-const db = new TreeDB<Department>(new MemoryCodec());
+type Task = { name: string; status: string; priority: number };
+const db = new TreeDB<Task>(new MemoryCodec());
 
 // Build a tree
-const company = await db.add({ name: "Acme Corp", budget: 1000000 }, null);
-const engineering = await db.add({ name: "Engineering", budget: 500000 }, company.id);
-const design = await db.add({ name: "Design", budget: 200000 }, company.id);
-const frontend = await db.add({ name: "Frontend", budget: 150000 }, engineering.id);
+const project = await db.add({ name: "Project", status: "active", priority: 1 }, null);
+const phase1 = await db.add({ name: "Phase 1", status: "active", priority: 1 }, project.id);
+const phase2 = await db.add({ name: "Phase 2", status: "pending", priority: 2 }, project.id);
+const task = await db.add({ name: "Design", status: "active", priority: 1 }, phase1.id);
 
-// Traverse
-const allDFS = await db.deep().get();                          // all nodes, depth-first
-const children = await db.children(company.id).get();          // engineering, design
-const ancestors = await db.ancestors(frontend.id).get();       // engineering, company
+// Chain starters are entry points — traversal and filtering chain from them
+const urgent = await db
+    .select(phase1.id)
+    .children()
+    .where(($) => [$("status"), "=", "active"])
+    .sort(($) => $("priority"), "asc")
+    .get();
 
-// Filter with tree metadata
-const deepNodes = await db.where($ => [$.DEPTH, ">", 1]).get();
+// Traversal chaining — hop across the tree mid-pipeline
+const blockedDescendants = await db
+    .childrenOf(project.id)
+    .where(($) => [$("status"), "=", "active"])
+    .deepDescendants()
+    .where(($) => [$("status"), "=", "pending"])
+    .get();
 
 // Structural mutations
-await db.move(frontend.id, design.id);       // reparent
-await db.prune(engineering.id);              // remove subtree
-await db.splice(design.id);                  // remove node, reparent children up
+await db.move(task.id, phase2.id); // reparent
+await db.prune(phase1.id); // remove subtree
 ```
 
 ### GraphDB
@@ -94,19 +102,27 @@ await db.connect(alice.id, bob.id, { type: "friend", since: 2020 });
 await db.connect(bob.id, charlie.id, { type: "colleague", since: 2022 });
 await db.connect(alice.id, charlie.id, { type: "friend", since: 2019 });
 
-// Single-hop traversal
-const aliceFriends = await db.node(alice.id).via($ => [$("type"), "=", "friend"]).get();
+// Mode switching chains: nodes → links → nodes
+const friendsOfFriends = await db
+    .node(alice.id)
+    .out()
+    .where(($) => [$("type"), "=", "friend"])
+    .to()
+    .where(($) => [$.DEGREE, ">", 1])
+    .get();
 
-// Mode switching: nodes -> links -> nodes
-const targets = await db.node(alice.id).out().where($ => [$("type"), "=", "friend"]).to().get();
-
-// Path finding
-const paths = await db.node(alice.id).pathTo(charlie.id).get();
-const shortest = await db.node(alice.id).pathTo(charlie.id).shortest().get();
-
-// Path filtering
-const friendPaths = await db.node(alice.id).pathTo(charlie.id)
-    .where($ => [$.links().where(_ => [_("type"), "=", "friend"]).size(), "=", $.LENGTH])
+// Path finding with filtering
+const friendOnlyPaths = await db
+    .node(alice.id)
+    .pathTo(charlie.id)
+    .where(($) => [
+        $.links()
+            .where(($2) => [$2("type"), "!=", "friend"])
+            .size(),
+        "=",
+        0,
+    ])
+    .shortest()
     .get();
 ```
 
@@ -123,10 +139,10 @@ All mutation operations (insert, update, remove) return the affected items.
 All three DBs use chainable query pipelines. A pipeline starts with a **chain starter**, passes through **chaining operations**, and terminates with a **terminal**.
 
 ```ts
-db.where($ => [$("age"), ">", 18])    // chain starter
-    .sort($ => $("name"), "asc")       // chaining op
-    .slice(0, 10)                      // chaining op
-    .get();                            // terminal
+db.where(($) => [$("age"), ">", 18]) // chain starter
+    .sort(($) => $("name"), "asc") // chaining op
+    .slice(0, 10) // chaining op
+    .get(); // terminal
 ```
 
 Pipelines are lazy — nothing executes until a terminal is called.
@@ -136,12 +152,7 @@ Pipelines are lazy — nothing executes until a terminal is called.
 Predicates use tuple syntax: `[subject, operator, operand]`.
 
 ```ts
-[$("age"), ">", 18]              // comparison
-[$("name"), "%", "Ali"]          // string contains
-[$("roles"), "#", "admin"]       // array/Set has
-[$("age"), "><", 18, 65]         // range (exclusive)
-[$("active"), "?"]               // truthiness
-[$.ID, "=", someId]              // meta field access
+[$("age"), ">", 18][($("name"), "%", "Ali")][($("roles"), "#", "admin")][($("age"), "><", 18, 65)][($("active"), "?")][($.ID, "=", someId)]; // comparison // string contains // array/Set has // range (exclusive) // truthiness // meta field access
 ```
 
 See [docs/predicates.md](docs/predicates.md) for the full operator reference.
@@ -151,13 +162,15 @@ See [docs/predicates.md](docs/predicates.md) for the full operator reference.
 All DBs support `intersection`, `union`, and `exclusion` across pipelines. These can be nested.
 
 ```ts
-const result = await db.union(
-    db.where($ => [$("age"), "<", 18]),
-    db.intersection(
-        db.where($ => [$("role"), "=", "admin"]),
-        db.where($ => [$("active"), "?"]),
-    ),
-).get();
+const result = await db
+    .union(
+        db.where(($) => [$("age"), "<", 18]),
+        db.intersection(
+            db.where(($) => [$("role"), "=", "admin"]),
+            db.where(($) => [$("active"), "?"]),
+        ),
+    )
+    .get();
 ```
 
 ### Codecs

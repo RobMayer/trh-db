@@ -398,7 +398,13 @@ db.node(a).pathTo(b).pathTo(c);
 // Filter the first segment before extending
 db.node(a)
     .pathTo(b)
-    .where(($) => [$.links().where(($2) => [$2("latency"), ">=", 10]).size(), "=", 0])
+    .where(($) => [
+        $.links()
+            .where(($2) => [$2("latency"), ">=", 10])
+            .size(),
+        "=",
+        0,
+    ])
     .pathTo(c);
 ```
 
@@ -468,7 +474,13 @@ const path = await db.node(sourceId).pathTo(targetId).shortest().first().get();
 const paths = await db
     .node(sourceId)
     .pathTo(targetId)
-    .where(($) => [$.links().where(($2) => [$2("latency"), ">=", 10]).size(), "=", 0])
+    .where(($) => [
+        $.links()
+            .where(($2) => [$2("latency"), ">=", 10])
+            .size(),
+        "=",
+        0,
+    ])
     .get();
 ```
 

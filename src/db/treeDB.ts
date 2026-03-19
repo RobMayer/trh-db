@@ -360,26 +360,26 @@ export class TreeDB<D, U = null> {
     wide: {
         (): TreePipeline<D, "multi">;
     } = (() => createPipeline(this, { type: "wide" })) as any;
-    ancestors: {
+    ancestorsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => createPipeline(this, { type: "ancestors", ids: normalizeIds(target) })) as any;
-    children: {
+    childrenOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => createPipeline(this, { type: "children", ids: normalizeIds(target) })) as any;
-    parent: {
+    parentOf: {
         (target: string): TreePipeline<D, "single">;
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: string | ListOr<string>) => {
         if (typeof target === "string") return createPipeline(this, { type: "parentOne", id: target });
         return createPipeline(this, { type: "parent", ids: normalizeIds(target) });
     }) as any;
-    deepDescendants: {
+    deepDescendantsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => createPipeline(this, { type: "deepDescendants", ids: normalizeIds(target) })) as any;
-    wideDescendants: {
+    wideDescendantsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => createPipeline(this, { type: "wideDescendants", ids: normalizeIds(target) })) as any;
-    siblings: {
+    siblingsOf: {
         (target: ListOr<string>): TreePipeline<D, "multi">;
     } = ((target: ListOr<string>) => createPipeline(this, { type: "siblings", ids: normalizeIds(target) })) as any;
 
