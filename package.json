@@ -1,6 +1,10 @@
 {
     "name": "@trh/db",
     "version": "1.0.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/RobMayer/trh-db.git"
+    },
     "description": "Typed in-memory data structures with lens-based query pipelines — DocumentDB, TreeDB, GraphDB",
     "scripts": {
         "dev": "tsx src/index.ts",
