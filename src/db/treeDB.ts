@@ -59,7 +59,7 @@ export class TreeDB<D, U = null> {
 
     get(target: string): TreeItemOf<D> | undefined;
     get(target: ListOf<string>): TreeItemOf<D>[];
-    get(target: string | ListOf<string>): TreeItemOf<D> | undefined | TreeItemOf<D>[] {
+    get(target: ListOr<string>): TreeItemOf<D> | undefined | TreeItemOf<D>[] {
         if (typeof target === "string") {
             return this.data[target];
         }
@@ -172,7 +172,7 @@ export class TreeDB<D, U = null> {
 
     async pluck(target: string): Promise<TreeItemOf<D> | undefined>;
     async pluck(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
-    async pluck(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
+    async pluck(target: ListOr<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
         const removed: TreeItemOf<D>[] = [];
         const structChanged: TreeItemOf<D>[] = [];
@@ -206,7 +206,7 @@ export class TreeDB<D, U = null> {
 
     async splice(target: string): Promise<TreeItemOf<D> | undefined>;
     async splice(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
-    async splice(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
+    async splice(target: ListOr<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
         const removed: TreeItemOf<D>[] = [];
         const structChanged: TreeItemOf<D>[] = [];
@@ -247,7 +247,7 @@ export class TreeDB<D, U = null> {
 
     async prune(target: string): Promise<TreeItemOf<D> | undefined>;
     async prune(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
-    async prune(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
+    async prune(target: ListOr<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
         const removed: TreeItemOf<D>[] = [];
 
@@ -283,7 +283,7 @@ export class TreeDB<D, U = null> {
 
     async trim(target: string): Promise<TreeItemOf<D> | undefined>;
     async trim(target: ListOf<string>): Promise<TreeItemOf<D>[]>;
-    async trim(target: string | ListOf<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
+    async trim(target: ListOr<string>): Promise<TreeItemOf<D> | undefined | TreeItemOf<D>[]> {
         const ids = typeof target === "string" ? [target] : [...target];
         const removed: TreeItemOf<D>[] = [];
 
@@ -347,7 +347,7 @@ export class TreeDB<D, U = null> {
     select: {
         (target: string): TreePipeline<D, "single">;
         (target: ListOf<string>): TreePipeline<D, "multi">;
-    } = ((target: string | ListOf<string>) => {
+    } = ((target: ListOr<string>) => {
         if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
         return createPipeline(this, { type: "select", ids: [...target] });
     }) as any;
@@ -387,7 +387,12 @@ export class TreeDB<D, U = null> {
 
     intersection(...pipelines: TreePipeline<D, any>[]): TreePipeline<D, "multi"> {
         const sets = pipelines.map((p) => new Set<string>((p as any)[RESOLVE]().map((i: { id: string }) => i.id)));
-        const result = sets.reduce((acc, s) => { for (const id of acc) { if (!s.has(id)) acc.delete(id); } return acc; });
+        const result = sets.reduce((acc, s) => {
+            for (const id of acc) {
+                if (!s.has(id)) acc.delete(id);
+            }
+            return acc;
+        });
         return createPipeline(this, { type: "ids", ids: [...result] }) as any;
     }
 

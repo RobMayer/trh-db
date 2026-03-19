@@ -1,4 +1,4 @@
-import { Codec, DBMeta, ListOf, Updater } from "../types";
+import { Codec, DBMeta, ListOf, ListOr, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
 import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf } from "../util/lens";
 
@@ -6,9 +6,8 @@ import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult,
 // DocumentDB<D>
 // ------------------------------------------------------------
 
-export type DocumentId = string;
-export type DocumentsOf<D> = { [id: DocumentId]: DocumentOf<D> };
-export type DocumentOf<D> = { id: DocumentId; type: "document"; data: D };
+export type DocumentOf<D> = { id: string; type: "document"; data: D };
+type DocumentsOf<D> = { [id: string]: DocumentOf<D> };
 
 const TYPE = "documents";
 const VERSION = 1;
@@ -43,9 +42,9 @@ export class DocumentDB<D, U = null> {
 
     // --- Direct methods (bypass pipeline) ---
 
-    get(target: DocumentId): DocumentOf<D> | undefined;
-    get(target: ListOf<DocumentId>): DocumentOf<D>[];
-    get(target: DocumentId | ListOf<DocumentId>): DocumentOf<D> | undefined | DocumentOf<D>[] {
+    get(target: string): DocumentOf<D> | undefined;
+    get(target: ListOf<string>): DocumentOf<D>[];
+    get(target: ListOr<string>): DocumentOf<D> | undefined | DocumentOf<D>[] {
         if (typeof target === "string") {
             return this.data[target];
         }
@@ -58,10 +57,10 @@ export class DocumentDB<D, U = null> {
         return results;
     }
 
-    async update(id: DocumentId, data: D | ((prev: D, meta: DocumentOf<D>) => D)): Promise<DocumentOf<D> | undefined>;
-    async update(payload: { [key: DocumentId]: D }): Promise<DocumentOf<D>[]>;
-    async update(ids: ListOf<DocumentId>, updater: (prev: D, meta: DocumentOf<D>) => D): Promise<DocumentOf<D>[]>;
-    async update(idOrPayload: DocumentId | { [key: DocumentId]: D } | ListOf<DocumentId>, dataOrUpdater?: D | ((prev: D, meta: DocumentOf<D>) => D)): Promise<DocumentOf<D> | undefined | DocumentOf<D>[]> {
+    async update(id: string, data: D | ((prev: D, meta: DocumentOf<D>) => D)): Promise<DocumentOf<D> | undefined>;
+    async update(payload: { [key: string]: D }): Promise<DocumentOf<D>[]>;
+    async update(ids: ListOf<string>, updater: (prev: D, meta: DocumentOf<D>) => D): Promise<DocumentOf<D>[]>;
+    async update(idOrPayload: string | { [key: string]: D } | ListOf<string>, dataOrUpdater?: D | ((prev: D, meta: DocumentOf<D>) => D)): Promise<DocumentOf<D> | undefined | DocumentOf<D>[]> {
         const items: DocumentOf<D>[] = [];
 
         if (typeof idOrPayload === "string") {
@@ -125,9 +124,9 @@ export class DocumentDB<D, U = null> {
         return Array.isArray(data) ? items : items[0];
     }
 
-    async remove(target: DocumentId): Promise<DocumentOf<D> | undefined>;
-    async remove(target: ListOf<DocumentId>): Promise<DocumentOf<D>[]>;
-    async remove(target: DocumentId | ListOf<DocumentId>): Promise<DocumentOf<D> | undefined | DocumentOf<D>[]> {
+    async remove(target: string): Promise<DocumentOf<D> | undefined>;
+    async remove(target: ListOf<string>): Promise<DocumentOf<D>[]>;
+    async remove(target: ListOr<string>): Promise<DocumentOf<D> | undefined | DocumentOf<D>[]> {
         const items: DocumentOf<D>[] = [];
 
         if (typeof target === "string") {
@@ -195,9 +194,9 @@ export class DocumentDB<D, U = null> {
         <T>(lens: ($: SelectorLens<D> & DocumentMeta & LogicalOps) => Predicate<T> | PredicateResult): DocumentPipeline<D, "multi">;
     } = ((predFn: Function) => createPipeline(this, { type: "where", predFn })) as any;
     select: {
-        (target: DocumentId): DocumentPipeline<D, "single">;
-        (target: ListOf<DocumentId>): DocumentPipeline<D, "multi">;
-    } = ((target: DocumentId | ListOf<DocumentId>) => {
+        (target: string): DocumentPipeline<D, "single">;
+        (target: ListOf<string>): DocumentPipeline<D, "multi">;
+    } = ((target: ListOr<string>) => {
         if (typeof target === "string") return createPipeline(this, { type: "selectOne", id: target });
         return createPipeline(this, { type: "select", ids: [...target] });
     }) as any;
@@ -439,7 +438,7 @@ function createPipeline<D>(db: DocumentDB<D, any>, seed: PipelineSeed): any {
                     return prev;
                 });
             } else {
-                const payload: { [key: DocumentId]: D } = {};
+                const payload: { [key: string]: D } = {};
                 for (const item of items) payload[item.id] = args[0] as D;
                 await db.update(payload);
             }

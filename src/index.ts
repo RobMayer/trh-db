@@ -1,24 +1,10 @@
+import { JsonCodec } from "./codec/jsonCodec";
+import { MemoryCodec } from "./codec/memoryCodec";
 import { TrhCodec } from "./codec/trhCodec";
-import { DocumentDB } from "./db/documentDB";
+import { DocumentDB, DocumentOf } from "./db/documentDB";
+import { GraphDB, GraphLinkOf, GraphNodeOf, GraphPath, GraphStep } from "./db/graphDB";
+import { TreeDB, TreeItemOf } from "./db/treeDB";
+import { Codec, DBMeta, ListOf, ListOr, Updater } from "./types";
 
-type Resource = {
-    name: string;
-};
-
-const resources = new DocumentDB<Resource>(new TrhCodec(".dev/resources.trhdb"));
-
-const doTheThing = async () => {
-    await resources.load();
-    await resources.insert({ name: "Bob" });
-    const bob = await resources.where(($) => [$("name"), "=", "Bob"]).get();
-
-    console.log(bob);
-};
-
-doTheThing()
-    .then(() => {
-        console.log("done");
-    })
-    .catch((e) => {
-        console.error(e);
-    });
+export { DocumentDB, GraphDB, TreeDB, JsonCodec, MemoryCodec, TrhCodec };
+export type { DocumentOf, TreeItemOf, GraphNodeOf, GraphLinkOf, GraphStep, GraphPath, ListOf, ListOr, Updater, Codec, DBMeta };

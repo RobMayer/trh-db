@@ -1,4 +1,4 @@
-import { Codec, DBMeta, GraphNodeOf, GraphLinkOf, ListOf, Updater } from "../types";
+import { Codec, DBMeta, ListOf, Updater } from "../types";
 import { IndexStore, stringifyIndex } from "../util/indices";
 import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult, Predicate, MutatorLens, MutatorLensOf, ELEMENT_META } from "../util/lens";
 
@@ -8,6 +8,9 @@ import { Lens, sortCompare, SelectorLens, PathLens, LogicalOps, PredicateResult,
 
 const TYPE = "graph";
 const VERSION = 1;
+
+export type GraphNodeOf<N> = { id: string; type: "node"; in: string[]; out: string[]; data: N };
+export type GraphLinkOf<L> = { id: string; type: "link"; from: string; to: string; data: L };
 
 type GraphRecord<N, L> = GraphNodeOf<N> | GraphLinkOf<L>;
 
@@ -197,7 +200,10 @@ export class GraphDB<N, L, U = null> {
     async updateLink(id: string, data: L | ((prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L)): Promise<GraphLinkOf<L> | undefined>;
     async updateLink(payload: { [key: string]: L }): Promise<GraphLinkOf<L>[]>;
     async updateLink(ids: ListOf<string>, updater: (prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L): Promise<GraphLinkOf<L>[]>;
-    async updateLink(idOrPayload: string | { [key: string]: L } | ListOf<string>, dataOrUpdater?: L | ((prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L)): Promise<GraphLinkOf<L> | undefined | GraphLinkOf<L>[]> {
+    async updateLink(
+        idOrPayload: string | { [key: string]: L } | ListOf<string>,
+        dataOrUpdater?: L | ((prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L),
+    ): Promise<GraphLinkOf<L> | undefined | GraphLinkOf<L>[]> {
         const items: GraphLinkOf<L>[] = [];
 
         if (typeof idOrPayload === "string") {
@@ -205,7 +211,10 @@ export class GraphDB<N, L, U = null> {
             if (!existing) return undefined;
             const fromNode = this.nodeMap[existing.from];
             const toNode = this.nodeMap[existing.to];
-            const newData = typeof dataOrUpdater === "function" ? (dataOrUpdater as (prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L)(existing.data, existing, fromNode, toNode) : (dataOrUpdater as L);
+            const newData =
+                typeof dataOrUpdater === "function"
+                    ? (dataOrUpdater as (prev: L, item: GraphLinkOf<L>, from: GraphNodeOf<N>, to: GraphNodeOf<N>) => L)(existing.data, existing, fromNode, toNode)
+                    : (dataOrUpdater as L);
             this.deindexLinkRecord(idOrPayload, existing.data);
             existing.data = newData;
             this.indexLinkRecord(idOrPayload, newData);
@@ -429,7 +438,12 @@ export class GraphDB<N, L, U = null> {
 
     intersection(...pipelines: (GraphNodePipeline<N, L, any> | GraphLinkPipeline<N, L, any>)[]): GraphNodePipeline<N, L, "multi"> | GraphLinkPipeline<N, L, "multi"> {
         const sets = pipelines.map((p) => new Set<string>((p as any)[RESOLVE]().map((i: { id: string }) => i.id)));
-        const result = sets.reduce((acc, s) => { for (const id of acc) { if (!s.has(id)) acc.delete(id); } return acc; });
+        const result = sets.reduce((acc, s) => {
+            for (const id of acc) {
+                if (!s.has(id)) acc.delete(id);
+            }
+            return acc;
+        });
         // Determine if node or link pipeline by checking first result
         const firstItems = (pipelines[0] as any)[RESOLVE]();
         const isLink = firstItems.length > 0 && "from" in firstItems[0];
@@ -446,7 +460,10 @@ export class GraphDB<N, L, U = null> {
         return createNodePipeline(this, { type: "ids", ids: [...seen] }) as any;
     }
 
-    exclusion(from: GraphNodePipeline<N, L, any> | GraphLinkPipeline<N, L, any>, ...subtract: (GraphNodePipeline<N, L, any> | GraphLinkPipeline<N, L, any>)[]): GraphNodePipeline<N, L, "multi"> | GraphLinkPipeline<N, L, "multi"> {
+    exclusion(
+        from: GraphNodePipeline<N, L, any> | GraphLinkPipeline<N, L, any>,
+        ...subtract: (GraphNodePipeline<N, L, any> | GraphLinkPipeline<N, L, any>)[]
+    ): GraphNodePipeline<N, L, "multi"> | GraphLinkPipeline<N, L, "multi"> {
         const base = new Set<string>((from as any)[RESOLVE]().map((i: { id: string }) => i.id));
         for (const p of subtract) for (const item of (p as any)[RESOLVE]()) base.delete((item as { id: string }).id);
         const firstItems = (from as any)[RESOLVE]();
@@ -508,19 +525,9 @@ type GraphPathData<N, L> = {
 // Pipeline Seeds
 // ------------------------------------------------------------
 
-type NodePipelineSeed =
-    | { type: "all" }
-    | { type: "selectOne"; id: string }
-    | { type: "select"; ids: string[] }
-    | { type: "where"; predFn: Function }
-    | { type: "ids"; ids: string[] };
+type NodePipelineSeed = { type: "all" } | { type: "selectOne"; id: string } | { type: "select"; ids: string[] } | { type: "where"; predFn: Function } | { type: "ids"; ids: string[] };
 
-type LinkPipelineSeed =
-    | { type: "all" }
-    | { type: "selectOne"; id: string }
-    | { type: "select"; ids: string[] }
-    | { type: "where"; predFn: Function }
-    | { type: "ids"; ids: string[] };
+type LinkPipelineSeed = { type: "all" } | { type: "selectOne"; id: string } | { type: "select"; ids: string[] } | { type: "where"; predFn: Function } | { type: "ids"; ids: string[] };
 
 // ------------------------------------------------------------
 // Pipeline Ops
@@ -619,7 +626,13 @@ function tryLinkIndexAccelerate<N, L>(predFn: Function, db: GraphDB<N, L, any>):
 // Graph traversal helpers
 // ------------------------------------------------------------
 
-function resolveVia<N, L>(items: GraphNodeOf<N>[], direction: "any" | "out" | "in", links: { [id: string]: GraphLinkOf<L> }, nodes: { [id: string]: GraphNodeOf<N> }, predFn?: Function): GraphNodeOf<N>[] {
+function resolveVia<N, L>(
+    items: GraphNodeOf<N>[],
+    direction: "any" | "out" | "in",
+    links: { [id: string]: GraphLinkOf<L> },
+    nodes: { [id: string]: GraphNodeOf<N> },
+    predFn?: Function,
+): GraphNodeOf<N>[] {
     const result: GraphNodeOf<N>[] = [];
     const seen = new Set<string>();
 
@@ -829,7 +842,11 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
                     break;
                 case "distinct": {
                     const seen = new Set<string>();
-                    items = items.filter((node) => { if (seen.has(node.id)) return false; seen.add(node.id); return true; });
+                    items = items.filter((node) => {
+                        if (seen.has(node.id)) return false;
+                        seen.add(node.id);
+                        return true;
+                    });
                     break;
                 }
                 case "slice":
@@ -884,46 +901,106 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             return Array.isArray(r) ? r : r ? [r] : [];
         },
         // --- Standard chaining ---
-        where(predFn: Function) { ops.push({ type: "where", predFn }); return pipeline; },
-        sort(lensFn: Function, dir: "asc" | "desc") { ops.push({ type: "sort", lensFn, dir }); return pipeline; },
-        first() { ops.push({ type: "first" }); return pipeline; },
-        last() { ops.push({ type: "last" }); return pipeline; },
-        at(index: number) { ops.push({ type: "at", index }); return pipeline; },
-        distinct() { ops.push({ type: "distinct" }); return pipeline; },
-        slice(start: number, end?: number) { ops.push({ type: "slice", start, end }); return pipeline; },
-        paginate(page: number, count: number) { ops.push({ type: "slice", start: (page - 1) * count, end: page * count }); return pipeline; },
-        window(skip: number, take: number) { ops.push({ type: "slice", start: skip, end: skip + take }); return pipeline; },
+        where(predFn: Function) {
+            ops.push({ type: "where", predFn });
+            return pipeline;
+        },
+        sort(lensFn: Function, dir: "asc" | "desc") {
+            ops.push({ type: "sort", lensFn, dir });
+            return pipeline;
+        },
+        first() {
+            ops.push({ type: "first" });
+            return pipeline;
+        },
+        last() {
+            ops.push({ type: "last" });
+            return pipeline;
+        },
+        at(index: number) {
+            ops.push({ type: "at", index });
+            return pipeline;
+        },
+        distinct() {
+            ops.push({ type: "distinct" });
+            return pipeline;
+        },
+        slice(start: number, end?: number) {
+            ops.push({ type: "slice", start, end });
+            return pipeline;
+        },
+        paginate(page: number, count: number) {
+            ops.push({ type: "slice", start: (page - 1) * count, end: page * count });
+            return pipeline;
+        },
+        window(skip: number, take: number) {
+            ops.push({ type: "slice", start: skip, end: skip + take });
+            return pipeline;
+        },
 
         // --- Via (stay node mode) ---
-        via(predFn?: Function) { ops.push({ type: "via", predFn }); return pipeline; },
-        viaOut(predFn?: Function) { ops.push({ type: "viaOut", predFn }); return pipeline; },
-        viaIn(predFn?: Function) { ops.push({ type: "viaIn", predFn }); return pipeline; },
+        via(predFn?: Function) {
+            ops.push({ type: "via", predFn });
+            return pipeline;
+        },
+        viaOut(predFn?: Function) {
+            ops.push({ type: "viaOut", predFn });
+            return pipeline;
+        },
+        viaIn(predFn?: Function) {
+            ops.push({ type: "viaIn", predFn });
+            return pipeline;
+        },
 
         // --- Deep/wide node traversals (stay node mode) ---
-        deepDownstreamNodes() { ops.push({ type: "deepDownstream" }); return pipeline; },
-        deepUpstreamNodes() { ops.push({ type: "deepUpstream" }); return pipeline; },
-        deepNodes() { ops.push({ type: "deepAll" }); return pipeline; },
-        wideDownstreamNodes() { ops.push({ type: "wideDownstream" }); return pipeline; },
-        wideUpstreamNodes() { ops.push({ type: "wideUpstream" }); return pipeline; },
-        wideNodes() { ops.push({ type: "wideAll" }); return pipeline; },
+        deepDownstreamNodes() {
+            ops.push({ type: "deepDownstream" });
+            return pipeline;
+        },
+        deepUpstreamNodes() {
+            ops.push({ type: "deepUpstream" });
+            return pipeline;
+        },
+        deepNodes() {
+            ops.push({ type: "deepAll" });
+            return pipeline;
+        },
+        wideDownstreamNodes() {
+            ops.push({ type: "wideDownstream" });
+            return pipeline;
+        },
+        wideUpstreamNodes() {
+            ops.push({ type: "wideUpstream" });
+            return pipeline;
+        },
+        wideNodes() {
+            ops.push({ type: "wideAll" });
+            return pipeline;
+        },
 
         // --- Mode switches to link pipeline (eager resolve) ---
         links() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const linkIds = new Set<string>();
-            for (const n of items) { for (const id of [...n.in, ...n.out]) linkIds.add(id); }
+            for (const n of items) {
+                for (const id of [...n.in, ...n.out]) linkIds.add(id);
+            }
             return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
         },
         out() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const linkIds = new Set<string>();
-            for (const n of items) { for (const id of n.out) linkIds.add(id); }
+            for (const n of items) {
+                for (const id of n.out) linkIds.add(id);
+            }
             return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
         },
         in() {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
             const linkIds = new Set<string>();
-            for (const n of items) { for (const id of n.in) linkIds.add(id); }
+            for (const n of items) {
+                for (const id of n.in) linkIds.add(id);
+            }
             return createLinkPipeline(db, { type: "ids", ids: [...linkIds] });
         },
 
@@ -962,25 +1039,54 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
         // --- Mode switch to path pipeline ---
         pathTo(target: string | Function) {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
-            const paths = findPaths(items.map((n) => n.id), target, "downstream", linkData, nodeData);
+            const paths = findPaths(
+                items.map((n) => n.id),
+                target,
+                "downstream",
+                linkData,
+                nodeData,
+            );
             return createPathPipeline(db, paths);
         },
         pathFrom(target: string | Function) {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
-            const paths = findPaths(items.map((n) => n.id), target, "upstream", linkData, nodeData);
+            const paths = findPaths(
+                items.map((n) => n.id),
+                target,
+                "upstream",
+                linkData,
+                nodeData,
+            );
             return createPathPipeline(db, paths);
         },
         pathBetween(target: string | Function) {
             const items = pipeline[RESOLVE]() as GraphNodeOf<N>[];
-            const paths = findPaths(items.map((n) => n.id), target, "any", linkData, nodeData);
+            const paths = findPaths(
+                items.map((n) => n.id),
+                target,
+                "any",
+                linkData,
+                nodeData,
+            );
             return createPathPipeline(db, paths);
         },
 
         // --- Read terminals ---
-        async get() { return execute(); },
-        async count() { const r = execute(); return Array.isArray(r) ? r.length : r ? 1 : 0; },
-        async exists() { const r = execute(); return Array.isArray(r) ? r.length > 0 : r !== undefined; },
-        async id() { const r = execute(); return Array.isArray(r) ? r.map((i: GraphNodeOf<N>) => i.id) : (r as GraphNodeOf<N> | undefined)?.id; },
+        async get() {
+            return execute();
+        },
+        async count() {
+            const r = execute();
+            return Array.isArray(r) ? r.length : r ? 1 : 0;
+        },
+        async exists() {
+            const r = execute();
+            return Array.isArray(r) ? r.length > 0 : r !== undefined;
+        },
+        async id() {
+            const r = execute();
+            return Array.isArray(r) ? r.map((i: GraphNodeOf<N>) => i.id) : (r as GraphNodeOf<N> | undefined)?.id;
+        },
 
         // --- Write terminals ---
         async update(...args: any[]) {
@@ -988,10 +1094,20 @@ function createNodePipeline<N, L>(db: GraphDB<N, L, any>, seed: NodePipelineSeed
             const items = Array.isArray(result) ? result : result ? [result] : [];
             if (items.length === 0) return result;
             if (typeof args[0] === "function" && args.length === 1) {
-                await db.updateNode(items.map((i) => i.id), args[0]);
+                await db.updateNode(
+                    items.map((i) => i.id),
+                    args[0],
+                );
             } else if (typeof args[0] === "function") {
-                const lensFn = args[0]; const value = args[1];
-                await db.updateNode(items.map((i) => i.id), (prev: N) => { Lens.mutate(prev, lensFn, value); return prev; });
+                const lensFn = args[0];
+                const value = args[1];
+                await db.updateNode(
+                    items.map((i) => i.id),
+                    (prev: N) => {
+                        Lens.mutate(prev, lensFn, value);
+                        return prev;
+                    },
+                );
             } else {
                 const payload: { [key: string]: N } = {};
                 for (const item of items) payload[item.id] = args[0] as N;
@@ -1090,7 +1206,11 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
                     break;
                 case "distinct": {
                     const seen = new Set<string>();
-                    items = items.filter((link) => { if (seen.has(link.id)) return false; seen.add(link.id); return true; });
+                    items = items.filter((link) => {
+                        if (seen.has(link.id)) return false;
+                        seen.add(link.id);
+                        return true;
+                    });
                     break;
                 }
                 case "slice":
@@ -1109,15 +1229,42 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
             return Array.isArray(r) ? r : r ? [r] : [];
         },
         // --- Standard chaining ---
-        where(predFn: Function) { ops.push({ type: "where", predFn }); return pipeline; },
-        sort(lensFn: Function, dir: "asc" | "desc") { ops.push({ type: "sort", lensFn, dir }); return pipeline; },
-        first() { ops.push({ type: "first" }); return pipeline; },
-        last() { ops.push({ type: "last" }); return pipeline; },
-        at(index: number) { ops.push({ type: "at", index }); return pipeline; },
-        distinct() { ops.push({ type: "distinct" }); return pipeline; },
-        slice(start: number, end?: number) { ops.push({ type: "slice", start, end }); return pipeline; },
-        paginate(page: number, count: number) { ops.push({ type: "slice", start: (page - 1) * count, end: page * count }); return pipeline; },
-        window(skip: number, take: number) { ops.push({ type: "slice", start: skip, end: skip + take }); return pipeline; },
+        where(predFn: Function) {
+            ops.push({ type: "where", predFn });
+            return pipeline;
+        },
+        sort(lensFn: Function, dir: "asc" | "desc") {
+            ops.push({ type: "sort", lensFn, dir });
+            return pipeline;
+        },
+        first() {
+            ops.push({ type: "first" });
+            return pipeline;
+        },
+        last() {
+            ops.push({ type: "last" });
+            return pipeline;
+        },
+        at(index: number) {
+            ops.push({ type: "at", index });
+            return pipeline;
+        },
+        distinct() {
+            ops.push({ type: "distinct" });
+            return pipeline;
+        },
+        slice(start: number, end?: number) {
+            ops.push({ type: "slice", start, end });
+            return pipeline;
+        },
+        paginate(page: number, count: number) {
+            ops.push({ type: "slice", start: (page - 1) * count, end: page * count });
+            return pipeline;
+        },
+        window(skip: number, take: number) {
+            ops.push({ type: "slice", start: skip, end: skip + take });
+            return pipeline;
+        },
 
         // --- Mode switches to node pipeline (eager resolve) ---
         from() {
@@ -1135,15 +1282,29 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
         nodes() {
             const items = pipeline[RESOLVE]() as GraphLinkOf<L>[];
             const nodeIds = new Set<string>();
-            for (const link of items) { nodeIds.add(link.from); nodeIds.add(link.to); }
+            for (const link of items) {
+                nodeIds.add(link.from);
+                nodeIds.add(link.to);
+            }
             return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
         },
 
         // --- Read terminals ---
-        async get() { return execute(); },
-        async count() { const r = execute(); return Array.isArray(r) ? r.length : r ? 1 : 0; },
-        async exists() { const r = execute(); return Array.isArray(r) ? r.length > 0 : r !== undefined; },
-        async id() { const r = execute(); return Array.isArray(r) ? r.map((i: GraphLinkOf<L>) => i.id) : (r as GraphLinkOf<L> | undefined)?.id; },
+        async get() {
+            return execute();
+        },
+        async count() {
+            const r = execute();
+            return Array.isArray(r) ? r.length : r ? 1 : 0;
+        },
+        async exists() {
+            const r = execute();
+            return Array.isArray(r) ? r.length > 0 : r !== undefined;
+        },
+        async id() {
+            const r = execute();
+            return Array.isArray(r) ? r.map((i: GraphLinkOf<L>) => i.id) : (r as GraphLinkOf<L> | undefined)?.id;
+        },
 
         // --- Write terminals ---
         async update(...args: any[]) {
@@ -1151,11 +1312,21 @@ function createLinkPipeline<N, L>(db: GraphDB<N, L, any>, seed: LinkPipelineSeed
             const items = Array.isArray(result) ? result : result ? [result] : [];
             if (items.length === 0) return result;
             if (typeof args[0] === "function" && args.length === 1) {
-                await db.updateLink(items.map((i) => i.id), args[0]);
+                await db.updateLink(
+                    items.map((i) => i.id),
+                    args[0],
+                );
             } else if (typeof args[0] === "function") {
-                const lensFn = args[0]; const value = args[1];
-                const updater: any = (prev: L) => { Lens.mutate(prev, lensFn, value); return prev; };
-                await db.updateLink(items.map((i) => i.id), updater);
+                const lensFn = args[0];
+                const value = args[1];
+                const updater: any = (prev: L) => {
+                    Lens.mutate(prev, lensFn, value);
+                    return prev;
+                };
+                await db.updateLink(
+                    items.map((i) => i.id),
+                    updater,
+                );
             } else {
                 const payload: { [key: string]: L } = {};
                 for (const item of items) payload[item.id] = args[0] as L;
@@ -1193,7 +1364,10 @@ function syntheticPathMeta<N, L>(path: GraphPath<N, L>): { data: { length: numbe
                         if (!seen.has(node.id)) {
                             seen.add(node.id);
                             const nodeData = { ...(node.data as any) };
-                            Object.defineProperty(nodeData, ELEMENT_META, { value: { ID: node.id, IN_DEGREE: node.in.length, OUT_DEGREE: node.out.length, DEGREE: node.in.length + node.out.length }, enumerable: false });
+                            Object.defineProperty(nodeData, ELEMENT_META, {
+                                value: { ID: node.id, IN_DEGREE: node.in.length, OUT_DEGREE: node.out.length, DEGREE: node.in.length + node.out.length },
+                                enumerable: false,
+                            });
                             result.push(nodeData);
                         }
                     }
@@ -1302,14 +1476,18 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
         shortest() {
             if (paths.length === 0) return pipeline;
             let minLen = paths[0].length;
-            for (let i = 1; i < paths.length; i++) { if (paths[i].length < minLen) minLen = paths[i].length; }
+            for (let i = 1; i < paths.length; i++) {
+                if (paths[i].length < minLen) minLen = paths[i].length;
+            }
             paths = paths.filter((p) => p.length === minLen);
             return pipeline;
         },
         longest() {
             if (paths.length === 0) return pipeline;
             let maxLen = paths[0].length;
-            for (let i = 1; i < paths.length; i++) { if (paths[i].length > maxLen) maxLen = paths[i].length; }
+            for (let i = 1; i < paths.length; i++) {
+                if (paths[i].length > maxLen) maxLen = paths[i].length;
+            }
             paths = paths.filter((p) => p.length === maxLen);
             return pipeline;
         },
@@ -1321,14 +1499,35 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
             });
             return pipeline;
         },
-        slice(start: number, end?: number) { paths = paths.slice(start, end); return pipeline; },
-        paginate(page: number, count: number) { paths = paths.slice((page - 1) * count, page * count); return pipeline; },
-        window(skip: number, take: number) { paths = paths.slice(skip, skip + take); return pipeline; },
+        slice(start: number, end?: number) {
+            paths = paths.slice(start, end);
+            return pipeline;
+        },
+        paginate(page: number, count: number) {
+            paths = paths.slice((page - 1) * count, page * count);
+            return pipeline;
+        },
+        window(skip: number, take: number) {
+            paths = paths.slice(skip, skip + take);
+            return pipeline;
+        },
 
         // --- PC cardinality reducers (narrow to single path) ---
-        first() { paths = paths.length > 0 ? [paths[0]] : []; isSinglePath = true; return pipeline; },
-        last() { paths = paths.length > 0 ? [paths[paths.length - 1]] : []; isSinglePath = true; return pipeline; },
-        at(index: number) { paths = index < paths.length ? [paths[index]] : []; isSinglePath = true; return pipeline; },
+        first() {
+            paths = paths.length > 0 ? [paths[0]] : [];
+            isSinglePath = true;
+            return pipeline;
+        },
+        last() {
+            paths = paths.length > 0 ? [paths[paths.length - 1]] : [];
+            isSinglePath = true;
+            return pipeline;
+        },
+        at(index: number) {
+            paths = index < paths.length ? [paths[index]] : [];
+            isSinglePath = true;
+            return pipeline;
+        },
 
         // --- SC cardinality reducer (narrow to single step) ---
         step(n: number) {
@@ -1385,8 +1584,12 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
             if (isSinglePath) return createLinkPipeline(db, ids.length === 1 ? { type: "selectOne", id: ids[0] } : { type: "ids", ids });
             return createLinkPipeline(db, { type: "ids", ids });
         },
-        origin() { return pipeline.nodeAt(0); },
-        destination() { return pipeline.nodeAt(-1); },
+        origin() {
+            return pipeline.nodeAt(0);
+        },
+        destination() {
+            return pipeline.nodeAt(-1);
+        },
         ends() {
             const nodeIds = new Set<string>();
             for (const path of paths) {
@@ -1402,7 +1605,10 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
         nodes() {
             const nodeIds = new Set<string>();
             for (const path of paths) {
-                for (const s of path) { nodeIds.add(s[0].id); nodeIds.add(s[2].id); }
+                for (const s of path) {
+                    nodeIds.add(s[0].id);
+                    nodeIds.add(s[2].id);
+                }
             }
             return createNodePipeline(db, { type: "ids", ids: [...nodeIds] });
         },
@@ -1415,9 +1621,15 @@ function createPathPipeline<N, L>(db: GraphDB<N, L, any>, initialPaths: GraphPat
         },
 
         // --- Read terminals ---
-        async get() { return execute(); },
-        async count() { return isSingleStep ? (steps?.length ?? 0) : paths.length; },
-        async exists() { return isSingleStep ? (steps?.length ?? 0) > 0 : paths.length > 0; },
+        async get() {
+            return execute();
+        },
+        async count() {
+            return isSingleStep ? (steps?.length ?? 0) : paths.length;
+        },
+        async exists() {
+            return isSingleStep ? (steps?.length ?? 0) > 0 : paths.length > 0;
+        },
     };
 
     return pipeline;
@@ -1460,10 +1672,13 @@ interface GraphLinkTerminals<N, L, C extends Cardinality> {
 
 // --- Path terminals ---
 
-type PathTerminalResult<N, L, PC extends Cardinality, SC extends Cardinality> =
-    PC extends "single"
-        ? SC extends "single" ? GraphStep<N, L> | undefined : GraphPath<N, L> | undefined
-        : SC extends "single" ? GraphStep<N, L>[] : GraphPath<N, L>[];
+type PathTerminalResult<N, L, PC extends Cardinality, SC extends Cardinality> = PC extends "single"
+    ? SC extends "single"
+        ? GraphStep<N, L> | undefined
+        : GraphPath<N, L> | undefined
+    : SC extends "single"
+      ? GraphStep<N, L>[]
+      : GraphPath<N, L>[];
 
 interface GraphPathTerminals<N, L, PC extends Cardinality, SC extends Cardinality> {
     get(): Promise<PathTerminalResult<N, L, PC, SC>>;
