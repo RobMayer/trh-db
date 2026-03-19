@@ -1,5 +1,5 @@
 {
-    "name": "trh-db",
+    "name": "@trh/db",
     "version": "1.0.0",
     "description": "",
     "scripts": {
