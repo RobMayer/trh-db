@@ -20,6 +20,9 @@
     "main": "dist/index.js",
     "module": "dist/index.mjs",
     "types": "dist/index.d.ts",
+    "publishConfig": {
+        "access": "public"
+    },
     "exports": {
         ".": {
             "import": "./dist/index.mjs",
