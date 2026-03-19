@@ -2,7 +2,6 @@
     "name": "trh-db",
     "version": "1.0.0",
     "description": "",
-    "main": "index.js",
     "scripts": {
         "dev": "tsx src/index.ts",
         "test": "vitest run",
@@ -10,6 +9,18 @@
         "build": "tsup src/*.ts",
         "clean": "rm -rf ./dist",
         "lint": "tsc"
+    },
+    "files": [
+        "./dist"
+    ],
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        }
     },
     "keywords": [],
     "author": "",
