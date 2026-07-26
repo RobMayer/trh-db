@@ -10,23 +10,30 @@
         "dev": "tsx src/index.ts",
         "test": "vitest run",
         "test:watch": "vitest",
-        "build": "tsdown src/*.ts",
+        "build": "tsdown",
         "clean": "rm -rf ./dist",
         "lint": "tsc"
     },
     "files": [
         "./dist"
     ],
-    "main": "dist/index.js",
-    "module": "dist/index.mjs",
-    "types": "dist/index.d.ts",
     "publishConfig": {
         "access": "public"
     },
+    "type": "module",
+    "main": "dist/index.cjs",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.cts",
     "exports": {
         ".": {
-            "import": "./dist/index.mjs",
-            "require": "./dist/index.js"
+            "import": {
+                "types": "./dist/index.d.mts",
+                "default": "./dist/index.mjs"
+            },
+            "require": {
+                "types": "./dist/index.d.cts",
+                "default": "./dist/index.cjs"
+            }
         }
     },
     "keywords": [
