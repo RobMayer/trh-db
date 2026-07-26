@@ -1,7 +1,7 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - '@trh/symbols@2.1.0'
+  - '@trh/symbols@2.1.0 || 2.2.0'
   - eslint@10.8.0
 onlyBuiltDependencies:
   - esbuild
