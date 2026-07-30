@@ -3,6 +3,100 @@ import { TrhSymbols } from "@trh/symbols";
 /** Attach per-element meta to array items for use in nested `where` predicates. */
 export const ELEMENT_META = Symbol("ELEMENT_META");
 
+export const Op = {
+    // Equality
+    equals: "=",
+    notEquals: "!=",
+    strictEquals: "==",
+    notStrictEquals: "!==",
+
+    // Ordering
+    greaterThan: ">",
+    notGreaterThan: "!>",
+    greaterThanOrEqual: ">=",
+    notGreaterThanOrEqual: "!>=",
+    lessThan: "<",
+    notLessThan: "!<",
+    lessThanOrEqual: "<=",
+    notLessThanOrEqual: "!<=",
+
+    // Equality — any of
+    equalsAny: "=|",
+    notEqualsAny: "!=|",
+
+    // Range (between)
+    between: "><",
+    notBetween: "!><",
+    betweenInclusive: ">=<",
+    notBetweenInclusive: "!>=<",
+
+    // String — contains
+    contains: "%",
+    notContains: "!%",
+    containsCI: "%^",
+    notContainsCI: "!%^",
+
+    // String — starts with
+    startsWith: "%_",
+    notStartsWith: "!%_",
+    startsWithCI: "%^_",
+    notStartsWithCI: "!%^_",
+
+    // String — ends with
+    endsWith: "_%",
+    notEndsWith: "!_%",
+    endsWithCI: "_%^",
+    notEndsWithCI: "!_%^",
+
+    // String — any of
+    containsAnyOf: "%|",
+    notContainsAnyOf: "!%|",
+    containsAnyOfCI: "%^|",
+    notContainsAnyOfCI: "!%^|",
+    startsWithAnyOf: "%_|",
+    notStartsWithAnyOf: "!%_|",
+    endsWithAnyOf: "_%|",
+    notEndsWithAnyOf: "!_%|",
+
+    // String — all of
+    containsAllOf: "%&",
+    notContainsAllOf: "!%&",
+    containsAllOfCI: "%^&",
+    notContainsAllOfCI: "!%^&",
+
+    // Regex
+    matches: "~",
+    notMatches: "!~",
+    matchesAny: "~|",
+    notMatchesAny: "!~|",
+    matchesAll: "~&",
+    notMatchesAll: "!~&",
+
+    // Membership (has)
+    has: "#",
+    notHas: "!#",
+    hasAny: "#|",
+    notHasAny: "!#|",
+    hasAll: "#&",
+    notHasAll: "!#&",
+
+    // Typeof
+    isType: ":",
+    isNotType: "!:",
+    isAnyType: ":|",
+    isNotAnyType: "!:|",
+
+    // Existence
+    exists: "?",
+    notExists: "!?",
+} as const satisfies Record<string, Operator>; // ① every value must be a real operator (typo guard)
+
+// ② Exhaustiveness guard: every `Operator` symbol must appear as a value above.
+// If one is missing, `Exclude<...>` is a non-`never` union and this alias errors,
+// naming the operator symbol(s) you forgot to add to `Op`.
+type AssertNever<T extends never> = T;
+type _OpExhaustive = AssertNever<Exclude<Operator, (typeof Op)[keyof typeof Op]>>;
+
 // --- Public API ---
 
 // Output types — what the lens callback must return
@@ -283,6 +377,29 @@ type TypeofOp = ":" | "!:";
 type TypeofAnyOfOp = ":|" | "!:|";
 
 type UnaryOp = "?" | "!?";
+
+// --- Full operator union ---
+// Single source of truth for operator exhaustiveness (see `Op`).
+// Keep in sync with the `*Op` aliases above and with `OperatorFor`.
+export type Operator =
+    | EqualityOp
+    | OrderingOp
+    | EqualityAnyOfOp
+    | RangeOp
+    | StringContainsOp
+    | StringStartsWithOp
+    | StringEndsWithOp
+    | StringAnyOfOp
+    | StringAllOfOp
+    | RegexOp
+    | RegexAnyOfOp
+    | RegexAllOfOp
+    | HasOp
+    | HasAnyOfOp
+    | HasAllOfOp
+    | TypeofOp
+    | TypeofAnyOfOp
+    | UnaryOp;
 
 // --- Operator → type mapping ---
 

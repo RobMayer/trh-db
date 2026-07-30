@@ -5,6 +5,7 @@ import { DocumentDB, DocumentOf } from "./db/documentDB";
 import { GraphDB, GraphLinkOf, GraphNodeOf, GraphPath, GraphStep } from "./db/graphDB";
 import { TreeDB, TreeItemOf } from "./db/treeDB";
 import { Codec, DBMeta, ListOf, ListOr, Updater } from "./types";
+import { SelectorLensOf, MutatorLensOf, ApplierLensOf } from "./util/lens";
 
 export { DocumentDB, GraphDB, TreeDB, JsonCodec, MemoryCodec, TrhCodec };
-export type { DocumentOf, TreeItemOf, GraphNodeOf, GraphLinkOf, GraphStep, GraphPath, ListOf, ListOr, Updater, Codec, DBMeta };
+export type { DocumentOf, TreeItemOf, GraphNodeOf, GraphLinkOf, GraphStep, GraphPath, ListOf, ListOr, Updater, Codec, DBMeta, SelectorLensOf, MutatorLensOf, ApplierLensOf };
